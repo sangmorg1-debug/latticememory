@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "latticememory"
+version = "0.1.0"
+description = "LatticeMemory — 10.7x compressed semantic index with E8 lattice addressing. O(1) retrieval for domain knowledge bases."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+dependencies = [
+    "torch>=2.0.0",
+    "transformers>=4.30.0",
+    "sentence-transformers>=3.0.0",
+    "numpy",
+]
+
+[project.optional-dependencies]
+langchain = ["langchain-core>=0.1.0"]
+faiss = ["faiss-cpu"]
+
+[project.urls]
+Homepage = "https://github.com/sangmorg1-debug/e8-Project"
+"HuggingFace Space" = "https://huggingface.co/spaces/dfrokido/LatticeMemory"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["latticememory*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
