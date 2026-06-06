@@ -25,10 +25,20 @@ class LatticeStats:
     index_size_mb: float
     compression_vs_float32: float
     exact_hit_rate: float | None = None
+    e8_key_size_mb: float | None = None
+    fallback_size_mb: float | None = None
+    total_index_size_mb: float | None = None
 
 
 class LatticeIndex:
-    def __init__(self, model: str = DEFAULT_MODEL, device: str = "auto", batch_size: int = 64, beam_radius: int = 1):
+    def __init__(
+        self,
+        model: str = DEFAULT_MODEL,
+        device: str = "auto",
+        batch_size: int = 64,
+        beam_radius: int = 1,
+        fallback_quantization: int | None = None,
+    ):
         from sentence_transformers import SentenceTransformer
         if device == "auto":
             import torch
@@ -39,12 +49,26 @@ class LatticeIndex:
             import numpy as np
             probe = encoder.encode(["dimension probe"])
             d_model = int(np.asarray(probe).shape[-1])
-        self._init_with_encoder(encoder, d_model=d_model, batch_size=batch_size, beam_radius=beam_radius)
+        self._init_with_encoder(
+            encoder,
+            d_model=d_model,
+            batch_size=batch_size,
+            beam_radius=beam_radius,
+            fallback_quantization=fallback_quantization,
+        )
 
-    def _init_with_encoder(self, encoder, *, d_model: int, batch_size: int = 64, beam_radius: int = 1) -> None:
+    def _init_with_encoder(
+        self,
+        encoder,
+        *,
+        d_model: int,
+        batch_size: int = 64,
+        beam_radius: int = 1,
+        fallback_quantization: int | None = None,
+    ) -> None:
         from latticememory.memory import DenseVectorFallback
         self._d_model = d_model
-        fallback = DenseVectorFallback(d_model=d_model)
+        fallback = DenseVectorFallback(d_model=d_model, quantization_bits=fallback_quantization)
         self._runtime = RFSnapTextMemory(encoder=encoder, d_model=d_model, batch_size=batch_size, fallback=fallback, beam_radius=beam_radius)
         self._total_queries: int = 0
         self._exact_hits: int = 0
@@ -78,9 +102,28 @@ class LatticeIndex:
 
     def stats(self) -> LatticeStats:
         docs = self._runtime.memory.num_documents
-        address_bytes = docs * (self._d_model // 8) * 3
+        e8_key_bytes = docs * (self._d_model // 8) * 3
+        fallback_bytes = 0
+        if self._runtime.memory.fallback is not None:
+            q_bits = getattr(self._runtime.memory.fallback, "quantization_bits", None)
+            if q_bits is not None:
+                fallback_bytes = getattr(self._runtime.memory.fallback, "get_index_size_bytes", lambda: 0)()
+            
+        total_bytes = e8_key_bytes + fallback_bytes
         float32_bytes = docs * self._d_model * 4
-        index_size_mb = address_bytes / (1024 * 1024)
-        compression = (float32_bytes / address_bytes) if address_bytes > 0 else 0.0
+        
+        e8_key_size_mb = e8_key_bytes / (1024 * 1024)
+        fallback_size_mb = fallback_bytes / (1024 * 1024)
+        total_index_size_mb = total_bytes / (1024 * 1024)
+        
+        compression = (float32_bytes / total_bytes) if total_bytes > 0 else 0.0
         exact_hit_rate = (self._exact_hits / self._total_queries if self._total_queries > 0 else None)
-        return LatticeStats(docs=docs, index_size_mb=round(index_size_mb, 4), compression_vs_float32=round(compression, 1), exact_hit_rate=exact_hit_rate)
+        return LatticeStats(
+            docs=docs,
+            index_size_mb=round(total_index_size_mb, 4),
+            compression_vs_float32=round(compression, 1),
+            exact_hit_rate=exact_hit_rate,
+            e8_key_size_mb=round(e8_key_size_mb, 4),
+            fallback_size_mb=round(fallback_size_mb, 4),
+            total_index_size_mb=round(total_index_size_mb, 4),
+        )

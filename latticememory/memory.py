@@ -112,8 +112,13 @@ class TextPairReranker(Protocol):
 class DenseVectorFallback:
     """Standard dense cosine retrieval baseline and production fallback hook."""
 
-    def __init__(self, d_model: int):
+    def __init__(self, d_model: int, quantization_bits: int | None = None):
+        if quantization_bits is not None and quantization_bits not in (4, 8):
+            raise ValueError("quantization_bits must be 4, 8, or None")
+        if quantization_bits == 4 and d_model % 2 != 0:
+            raise ValueError("d_model must be even for 4-bit quantization")
         self.d_model = d_model
+        self.quantization_bits = quantization_bits
         self._doc_ids: list[str] = []
         self._texts: dict[str, str] = {}
         self._metadata: dict[str, dict] = {}
@@ -132,7 +137,23 @@ class DenseVectorFallback:
             self._doc_ids.append(doc.doc_id)
             self._texts[doc.doc_id] = doc.text
             self._metadata[doc.doc_id] = dict(doc.metadata)
-            vectors.append(F.normalize(vector, p=2, dim=0))
+            normed = F.normalize(vector, p=2, dim=0)
+            
+            if self.quantization_bits == 8:
+                quantized = (normed * 127.0).round().clamp(-127, 127).to(torch.int8)
+                vectors.append(quantized)
+            elif self.quantization_bits == 4:
+                # Signed symmetric Int4: round/clamp to [-7, 7], shift by +8 to unsigned [1, 15]
+                val_4 = (normed * 7.0).round().clamp(-7, 7).to(torch.int8)
+                unsigned_val = (val_4 + 8).to(torch.uint8)
+                # Pack two elements into one uint8 byte
+                even_cols = unsigned_val[0::2]
+                odd_cols = unsigned_val[1::2]
+                packed = (even_cols << 4) | odd_cols
+                vectors.append(packed)
+            else:
+                vectors.append(normed)
+                
         if not vectors:
             return
         batch = torch.stack(vectors)
@@ -146,8 +167,27 @@ class DenseVectorFallback:
         vector = torch.as_tensor(query, dtype=torch.float32)
         if vector.dim() != 1 or vector.numel() != self.d_model:
             raise ValueError(f"query embedding must have dim {self.d_model}")
+            
+        if self.quantization_bits == 8:
+            dequantized = self._embeddings.float() / 127.0
+            dequantized = F.normalize(dequantized, p=2, dim=1)
+        elif self.quantization_bits == 4:
+            packed = self._embeddings
+            even_cols_unpacked = (packed >> 4) & 0x0F
+            odd_cols_unpacked = packed & 0x0F
+            
+            N = packed.shape[0]
+            unpacked = torch.zeros(N, self.d_model, dtype=torch.uint8, device=packed.device)
+            unpacked[:, 0::2] = even_cols_unpacked
+            unpacked[:, 1::2] = odd_cols_unpacked
+            
+            dequantized = (unpacked.to(torch.int8) - 8).float() / 7.0
+            dequantized = F.normalize(dequantized, p=2, dim=1)
+        else:
+            dequantized = self._embeddings
+            
         q = F.normalize(vector, p=2, dim=0)
-        scores = self._embeddings @ q
+        scores = dequantized @ q
         k = min(top_k, scores.numel())
         values, indices = torch.topk(scores, k=k)
         hits = []
@@ -158,6 +198,42 @@ class DenseVectorFallback:
 
     def text_for(self, doc_id: str) -> str:
         return self._texts.get(doc_id, "")
+
+    def get_index_size_bytes(self) -> int:
+        if self._embeddings is None:
+            return 0
+        return self._embeddings.numel() * self._embeddings.element_size()
+
+    def save(self, path: str | Path) -> None:
+        from pathlib import Path
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        torch.save(
+            {
+                "_version": 1,
+                "d_model": self.d_model,
+                "quantization_bits": self.quantization_bits,
+                "doc_ids": list(self._doc_ids),
+                "texts": dict(self._texts),
+                "metadata": {doc_id: dict(meta) for doc_id, meta in self._metadata.items()},
+                "embeddings": self._embeddings,
+            },
+            str(path),
+        )
+
+    @classmethod
+    def load(cls, path: str | Path) -> "DenseVectorFallback":
+        from pathlib import Path
+        path = Path(path)
+        data = torch.load(str(path), weights_only=False)
+        if data.get("_version") != 1:
+            raise ValueError(f"Unsupported DenseVectorFallback save version: {data.get('_version')}")
+        fallback = cls(d_model=int(data["d_model"]), quantization_bits=data.get("quantization_bits"))
+        fallback._doc_ids = list(data["doc_ids"])
+        fallback._texts = dict(data["texts"])
+        fallback._metadata = dict(data["metadata"])
+        fallback._embeddings = data["embeddings"]
+        return fallback
 
 
 class RFSnapLatticeMemory:
@@ -223,6 +299,7 @@ class RFSnapLatticeMemory:
         import numpy as np
         rows = self.sqlite_store.get_all_rows()
         new_ann_embeddings: list[torch.Tensor] = []
+        docs_to_fallback: list[MemoryDocument] = []
         for row in rows:
             doc_id = row["doc_id"]
             text = row["text"]
@@ -244,8 +321,20 @@ class RFSnapLatticeMemory:
             self._doc_id_set.add(doc_id)
             new_ann_embeddings.append(ann_vector)
             
+            if self.fallback is not None:
+                docs_to_fallback.append(
+                    MemoryDocument(
+                        doc_id=doc_id,
+                        text=text,
+                        embedding=vector,
+                        metadata=metadata,
+                    )
+                )
+            
         if new_ann_embeddings:
             self._ann_embeddings = torch.stack(new_ann_embeddings)
+        if self.fallback is not None and docs_to_fallback:
+            self.fallback.add_documents(docs_to_fallback)
 
     def lattice_key_for(self, embedding: torch.Tensor | Iterable[float]) -> bytes:
         """Compute the quantized E8 lattice key for the given embedding."""

@@ -5,7 +5,7 @@ import pytest
 import torch
 import numpy as np
 
-from latticememory.memory import RFSnapLatticeMemory, MemoryDocument
+from latticememory.memory import RFSnapLatticeMemory, MemoryDocument, DenseVectorFallback
 from latticememory.sqlite_store import LatticeSqliteStore
 from tests.test_lattice_index import FakeEncoder
 
@@ -84,3 +84,25 @@ def test_memory_save_and_load_sqlite(temp_db_path):
     assert loaded.num_documents == 1
     assert loaded._texts["doc-1"] == "Save me"
     assert loaded._metadata["doc-1"] == {"prio": 1}
+
+
+def test_memory_save_and_load_sqlite_with_fallback(temp_db_path):
+    fallback = DenseVectorFallback(d_model=384, quantization_bits=8)
+    memory = RFSnapLatticeMemory(d_model=384, fallback=fallback)
+    doc = MemoryDocument(
+        doc_id="doc-1",
+        text="Save fallback text",
+        embedding=torch.randn(384),
+        metadata={"prio": 2},
+    )
+    memory.add_documents([doc])
+    
+    memory.save_to_sqlite(str(temp_db_path))
+    
+    new_fallback = DenseVectorFallback(d_model=384, quantization_bits=8)
+    loaded = RFSnapLatticeMemory.load_from_sqlite(str(temp_db_path), fallback=new_fallback)
+    
+    assert loaded.num_documents == 1
+    assert loaded.fallback is not None
+    assert loaded.fallback.num_documents == 1
+    assert loaded.fallback.text_for("doc-1") == "Save fallback text"
