@@ -10,7 +10,7 @@ We analyzed how the E8 key routing constraints on asymmetric datasets (like MS M
 
 Rather than hurting the pitch, these findings define the boundary between **key-only (O(1) hash) retrieval** and **fallback-supported retrieval**. 
 
-* **The Refined Pitch:** We deliver a **10.7× smaller E8 key representation** and sub-millisecond lookups for high-frequency semantic matching, duplicate detection, and semantic caching. For general asymmetric web search, current quality depends on hybrid fallback over stored dense embeddings. Int4/Int8 fallback can preserve more of the storage story, but it is a next benchmark target rather than a completed proof.
+* **The Refined Pitch:** We deliver a **10.7× smaller E8 key representation** and sub-millisecond lookups for high-frequency semantic matching, duplicate detection, and semantic caching. For general asymmetric web search, current quality depends on hybrid fallback over stored dense embeddings. Int8 fallback is now implemented and measured as a practical compression/quality tradeoff; Int4 is implemented but too lossy for QA/RAG fallback based on current benchmarks.
 * **Why this is a win:** Presenting a technically honest pitch that explicitly separates *symmetric intent routing* from *asymmetric QA fallback* prevents proof-of-concept (PoC) failures with enterprise clients.
 
 ---
@@ -52,4 +52,4 @@ Here is how the E8 snapping constraints affect each active and planned branch of
 * **Architectural Fix:** We must use a **hybrid retrieval index**:
   1. Check the E8 index for exact/paraphrase O(1) matches (handles duplicate/similar queries instantly).
   2. If it misses, fall back to standard cosine similarity search over stored embeddings.
-  3. To maintain index compression, add and benchmark **Int4/Int8** fallback storage. This is not yet implemented as the proven path; equal-recall claims must be measured against the float32 baseline.
+  3. To maintain index compression, use measured fallback storage modes. On the 1K-doc real-model paraphrase fallback benchmark, Int8 gives **4× fallback compression** with **95.1% Recall@10 overlap** vs float32. Int4 gives **8× fallback compression** but only **12.1% Recall@10 overlap**, so it is experimental for QA/RAG.

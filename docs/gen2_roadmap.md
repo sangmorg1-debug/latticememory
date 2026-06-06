@@ -65,7 +65,7 @@ LatticeObservability, GeneratorTrace, RetrievalEvent  # observability.py
 - **Compression**: `(d_model × 4 bytes) / ((d_model/8) × 3 bytes)` = **10.67× ≈ 10.7×** vs float32.
 - **Discriminative capacity**: 240^48 addresses for 384D, 240^128 for 1024D — collision probability negligible.
 - **E8 parity constraint**: dot products of `2y` (where `y ∈ E8`) with odd-integer coefficients are always multiples of 4. See `latticememory/moe.py:121-127` for the implemented consequence (divide by 4 before modulo to prevent expert collapse).
-- **Retrieval paths**: `lattice_exact` (O(1) hash lookup, exact key match) → `lattice_hamming1` (beam search over neighbors) → `fallback` (cosine ANN over stored float32 embeddings).
+- **Retrieval paths**: `lattice_exact` (O(1) hash lookup, exact key match) → `lattice_hamming1` (radius-1 beam search over neighbors) → `fallback` (cosine ANN over stored dense embeddings).
 
 ---
 

@@ -44,4 +44,4 @@ Query adapters (e.g., `ResidualMLPAdapter`) should be reserved for symmetric ret
 For general QA and passage retrieval (like MS MARCO), our current exact/Hamming-1 key routing did not generalize from train to validation due to semantic asymmetry. The correct current architecture is:
 * Use the E8 keys for exact/paraphrase O(1) matching.
 * If a query misses the exact/Hamming-1 key, fall back to standard cosine similarity search over stored dense embeddings.
-* Float32 dense fallback can match the float32 cosine baseline by construction. Int4/Int8 fallback is a planned compression optimization that still needs measured recall/latency validation.
+* Float32 dense fallback can match the float32 cosine baseline by construction. Int8 fallback is implemented and currently measures 95.1% Recall@10 overlap vs float32 on the 1K-doc real-model paraphrase fallback benchmark. Int4 fallback is implemented but measured too lossy for QA/RAG fallback quality on that benchmark.

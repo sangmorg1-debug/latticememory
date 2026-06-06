@@ -154,7 +154,7 @@ def _build_queries(docs: list[str], *, n_queries: int, query_mode: str) -> list[
 def _empty_path_samples() -> dict[str, list[float]]:
     return {
         "lattice_exact": [],
-        "lattice_hamming": [],
+        "lattice_hamming1": [],
         "fallback": [],
         "miss": [],
     }

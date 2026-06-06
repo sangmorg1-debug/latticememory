@@ -10,19 +10,26 @@ LatticeMemory uses the [E8 lattice](https://en.wikipedia.org/wiki/E8_lattice) �
 
 ## Benchmarks
 
-**Index compression (bge-large 1024-dim):**
+**E8 key compression (bge-large 1024-dim):**
 
 | Method | Compression | Index / 1M docs | Retrieval p50 @ 100K docs | Recall@10 |
 |---|---:|---:|---:|---:|
 | Float32 | 1× | 4.1 GB | 20.8 ms | 100% |
-| Int4 | 8× | 0.51 GB | 18.5 ms | 100% |
-| **LatticeMemory** | **10.7×** | **0.38 GB** | **1.2 ms** | **100%** |
+| **LatticeMemory E8 keys** | **10.7×** | **0.38 GB** | path-dependent | key-only workloads |
 
-- More compressed than int4 for E8 keys. Faster than float32 on exact-key cache hits. Dense fallback is still required for asymmetric QA/passage search.
+**Fallback compression benchmark** (`dfrokido/bge-large-e8-snap`, 1K docs, 100 paraphrase queries, Recall@10/top-k overlap vs float32 fallback):
+
+| Fallback | Compression vs float32 fallback | Recall@10 overlap | Top-1 agreement | Search p50 |
+|---|---:|---:|---:|---:|
+| Float32 | 1× | 100.0% | 100.0% | 0.14 ms |
+| Int8 | 4× | 95.1% | 91.0% | 1.97 ms |
+| Int4 | 8× | 12.1% | 1.0% | 4.21 ms |
+
+- More compressed than int4 for E8 keys. Faster than float32 on exact-key cache hits. Dense or Int8 fallback is still required for asymmetric QA/passage search.
 - STS quality: **0.8714** (`bge-large-e8-snap`) vs 0.8637 float baseline (+0.0077)
 - End-to-end RAG: **82% answer agreement** with float32 at identical recall
 
-> **Compression basis:** The 10.7× figure is the E8 key-representation ratio — 1 address byte + 2 scale bytes per 8-dim block = 384 bytes for 1024-dim vs 4,096 bytes for float32. The stated ratio is achieved in key-only mode (exact + Hamming-1 retrieval only, cosine fallback disabled), which is suitable for symmetric workloads (semantic cache, agent episodic memory, duplicate detection, IoT commands). For asymmetric QA/passage search like MS MARCO, the current implementation must use hybrid mode: E8 keys first, then dense cosine fallback on lattice miss. Int4/Int8 fallback compression is a planned optimization and must be benchmarked against the float32 baseline before making equal-recall claims.
+> **Compression basis:** The 10.7× figure is the E8 key-representation ratio — 1 address byte + 2 scale bytes per 8-dim block = 384 bytes for 1024-dim vs 4,096 bytes for float32. The stated ratio is achieved in key-only mode (exact + Hamming-1 retrieval only, cosine fallback disabled), which is suitable for symmetric workloads (semantic cache, agent episodic memory, duplicate detection, IoT commands). For asymmetric QA/passage search like MS MARCO, the current implementation must use hybrid mode: E8 keys first, then dense cosine fallback on lattice miss. Int8 fallback is implemented and measured; Int4 fallback is implemented but not retrieval-quality-safe for QA based on the benchmark above.
 
 ---
 
@@ -61,7 +68,7 @@ results2 = index.search("capital of France", top_k=2)
 print(results2[0].text)           # Paris is the capital of France.
 
 print(index.stats())
-# LatticeStats(docs=3, index_size_mb=0.0011, compression_vs_float32=10.7)
+# LatticeStats(... compression_mode='e8_key_only', e8_key_bytes=432, ...)
 ```
 
 ### LLM Semantic Cache (LangChain)

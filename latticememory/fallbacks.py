@@ -28,7 +28,7 @@ class FaissVectorFallback:
     scalar quantization for memory compression.
     """
 
-    def __init__(self, d_model: int, quantization_bits: int | None = None):
+    def __init__(self, d_model: int, quantization_bits: int | None = None, seed: int = 42):
         if quantization_bits is not None and quantization_bits not in (4, 8):
             raise ValueError("quantization_bits must be 4, 8, or None")
         if quantization_bits == 4 and d_model % 2 != 0:
@@ -36,6 +36,7 @@ class FaissVectorFallback:
             
         self.d_model = d_model
         self.quantization_bits = quantization_bits
+        self.seed = int(seed)
         self._faiss = _require_faiss()
         
         if quantization_bits == 8:
@@ -76,7 +77,8 @@ class FaissVectorFallback:
                 self._index.train(batch_np)
             else:
                 needed = 256 - batch_np.shape[0]
-                synthetic = np.random.randn(needed, self.d_model).astype("float32")
+                rng = np.random.default_rng(self.seed)
+                synthetic = rng.standard_normal((needed, self.d_model)).astype("float32")
                 norms = np.linalg.norm(synthetic, axis=1, keepdims=True)
                 synthetic = np.where(norms > 0, synthetic / norms, synthetic)
                 train_data = np.concatenate([batch_np, synthetic], axis=0)
@@ -107,6 +109,7 @@ class FaissVectorFallback:
         return self._texts.get(doc_id, "")
 
     def get_index_size_bytes(self) -> int:
+        """Return an estimate of vector payload bytes stored by the FAISS index."""
         if not self._doc_ids:
             return 0
         n = len(self._doc_ids)
@@ -126,6 +129,7 @@ class FaissVectorFallback:
                 "_version": 1,
                 "d_model": self.d_model,
                 "quantization_bits": self.quantization_bits,
+                "seed": self.seed,
                 "doc_ids": list(self._doc_ids),
                 "texts": dict(self._texts),
                 "metadata": {doc_id: dict(meta) for doc_id, meta in self._metadata.items()},
@@ -139,7 +143,11 @@ class FaissVectorFallback:
         meta = torch.load(str(path) + ".meta.pt", weights_only=False)
         if meta.get("_version") != 1:
             raise ValueError(f"Unsupported FaissVectorFallback save version: {meta.get('_version')}")
-        fallback = cls(d_model=int(meta["d_model"]), quantization_bits=meta.get("quantization_bits"))
+        fallback = cls(
+            d_model=int(meta["d_model"]),
+            quantization_bits=meta.get("quantization_bits"),
+            seed=int(meta.get("seed", 42)),
+        )
         fallback._index = fallback._faiss.read_index(str(path))
         fallback._doc_ids = list(meta["doc_ids"])
         fallback._texts = dict(meta["texts"])

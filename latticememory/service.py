@@ -498,7 +498,8 @@ def create_app(
     /* Path color badges */
     .path-badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; }
     .path-lattice_exact  { background: #dcfce7; color: #166534; }
-    .path-lattice_hamming { background: #dbeafe; color: #1e40af; }
+    .path-lattice_hamming,
+    .path-lattice_hamming1 { background: #dbeafe; color: #1e40af; }
     .path-fallback       { background: #ffedd5; color: #9a3412; }
     .path-miss           { background: #fee2e2; color: #991b1b; }
     /* Quality tag badges */
@@ -580,7 +581,7 @@ def create_app(
         <select id="filter-path">
           <option value="">All paths</option>
           <option value="lattice_exact">lattice_exact</option>
-          <option value="lattice_hamming">lattice_hamming</option>
+          <option value="lattice_hamming1">lattice_hamming1</option>
           <option value="fallback">fallback</option>
           <option value="miss">miss</option>
         </select>
@@ -670,7 +671,7 @@ def create_app(
 
     // ---- Path mix doughnut ----
     function updatePathMix(pathCounts) {
-      const labels = ['lattice_exact', 'lattice_hamming', 'fallback', 'miss'];
+      const labels = ['lattice_exact', 'lattice_hamming1', 'fallback', 'miss'];
       const colors = ['#16a34a', '#2563eb', '#d97706', '#dc2626'];
       const data = labels.map(l => (pathCounts || {})[l] || 0);
       const total = data.reduce((a, b) => a + b, 0);

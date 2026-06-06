@@ -85,6 +85,48 @@ def test_dense_quantization_correctness(int8_fallback, int4_fallback, float32_fa
         print(f"\nQuery {q_idx} INT4 top score diff: {int4_diff:.4f}")
 
 
+def test_dense_quantized_random_query_agreement_is_measured():
+    torch.manual_seed(123)
+    d_model = 128
+    n_docs = 500
+    n_queries = 100
+    top_k = 10
+    embeddings = torch.randn(n_docs, d_model)
+    documents = [
+        MemoryDocument(doc_id=f"doc-{i}", text=f"Doc {i}", embedding=embeddings[i])
+        for i in range(n_docs)
+    ]
+    float32_fallback = DenseVectorFallback(d_model=d_model)
+    int8_fallback = DenseVectorFallback(d_model=d_model, quantization_bits=8)
+    int4_fallback = DenseVectorFallback(d_model=d_model, quantization_bits=4)
+    for fallback in (float32_fallback, int8_fallback, int4_fallback):
+        fallback.add_documents(documents)
+
+    int8_top1 = int4_top1 = 0
+    int8_overlap = int4_overlap = 0.0
+    for query in torch.randn(n_queries, d_model):
+        baseline = [hit.doc_id for hit in float32_fallback.search(query, top_k=top_k)]
+        int8 = [hit.doc_id for hit in int8_fallback.search(query, top_k=top_k)]
+        int4 = [hit.doc_id for hit in int4_fallback.search(query, top_k=top_k)]
+        int8_top1 += int8[0] == baseline[0]
+        int4_top1 += int4[0] == baseline[0]
+        int8_overlap += len(set(int8) & set(baseline)) / top_k
+        int4_overlap += len(set(int4) & set(baseline)) / top_k
+
+    metrics = {
+        "int8_top1_agreement": int8_top1 / n_queries,
+        "int4_top1_agreement": int4_top1 / n_queries,
+        "int8_overlap_at_10": int8_overlap / n_queries,
+        "int4_overlap_at_10": int4_overlap / n_queries,
+    }
+    print(f"\nDense fallback quantization random-query metrics: {metrics}")
+    assert metrics["int8_top1_agreement"] >= 0.95
+    assert metrics["int8_overlap_at_10"] >= 0.95
+    # Int4 is intentionally treated as lower-fidelity until real embedding benchmarks prove otherwise.
+    assert metrics["int4_top1_agreement"] >= 0.35
+    assert metrics["int4_overlap_at_10"] >= 0.50
+
+
 def test_dense_fallback_save_load(int4_fallback):
     torch.manual_seed(42)
     d_model = 128
@@ -146,6 +188,27 @@ def test_faiss_quantization_and_lazy_train():
     
     assert faiss_8bit.get_index_size_bytes() == 10 * d_model
     assert faiss_4bit.get_index_size_bytes() == 300 * (d_model // 2)
+
+
+def test_faiss_synthetic_training_is_deterministic():
+    pytest.importorskip("faiss")
+
+    d_model = 128
+    torch.manual_seed(33)
+    docs = [
+        MemoryDocument(doc_id=f"doc-{i}", text=f"Doc {i}", embedding=torch.randn(d_model))
+        for i in range(12)
+    ]
+    query = torch.randn(d_model)
+
+    left = FaissVectorFallback(d_model=d_model, quantization_bits=8, seed=99)
+    right = FaissVectorFallback(d_model=d_model, quantization_bits=8, seed=99)
+    left.add_documents(docs)
+    right.add_documents(docs)
+
+    assert [(hit.doc_id, hit.score) for hit in left.search(query, top_k=5)] == [
+        (hit.doc_id, hit.score) for hit in right.search(query, top_k=5)
+    ]
 
 
 def test_faiss_save_load():

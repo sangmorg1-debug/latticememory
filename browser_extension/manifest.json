@@ -24,6 +24,7 @@
   "web_accessible_resources": [
     {
       "resources": [
+        "search_core.js",
         "wasm/latticememory_kernel_bg.wasm",
         "wasm/latticememory_kernel.js"
       ],

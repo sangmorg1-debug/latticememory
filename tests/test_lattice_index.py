@@ -108,6 +108,21 @@ def test_stats_compression_ratio_positive(index):
     assert 10.0 <= stats.compression_vs_float32 <= 11.0
 
 
+def test_stats_exposes_key_fallback_and_total_bytes():
+    idx = LatticeIndex.__new__(LatticeIndex)
+    idx._init_with_encoder(FakeEncoder(384), d_model=384, fallback_quantization=8)
+    idx.add(["doc a", "doc b"])
+
+    stats = idx.stats()
+
+    assert stats.e8_key_bytes == 2 * (384 // 8) * 3
+    assert stats.fallback_bytes == 2 * 384
+    assert stats.total_index_bytes == stats.e8_key_bytes + stats.fallback_bytes
+    assert stats.float32_embedding_bytes == 2 * 384 * 4
+    assert stats.fallback_quantization == 8
+    assert stats.compression_mode == "hybrid_quantized_fallback"
+
+
 def test_init_with_encoder_stores_d_model():
     idx = LatticeIndex.__new__(LatticeIndex)
     idx._init_with_encoder(FakeEncoder(1024), d_model=1024)

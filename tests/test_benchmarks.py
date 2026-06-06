@@ -59,7 +59,7 @@ def test_retrieval_benchmark_reports_latency_paths_and_recall(tmp_path):
     assert result["recall_at_k_vs_float32"] == 0.1
     assert result["top1_agreement_vs_float32"] == 1.0
     assert result["path_counts"]["lattice_exact"] == 10
-    assert set(result["per_path_latency_ms"]) >= {"lattice_exact", "lattice_hamming", "fallback", "miss"}
+    assert set(result["per_path_latency_ms"]) >= {"lattice_exact", "lattice_hamming1", "fallback", "miss"}
     assert result["per_path_latency_ms"]["lattice_exact"]["count"] == 10
     assert result["per_path_lookup_only_latency_ms"]["lattice_exact"]["count"] == 10
     assert result["latency_ms"]["p50"] >= 0
@@ -68,6 +68,34 @@ def test_retrieval_benchmark_reports_latency_paths_and_recall(tmp_path):
     assert result["lookup_only_latency_ms"]["p50"] >= 0
     assert result["lookup_only_latency_ms"]["p50"] <= result["latency_ms"]["p50"]
     assert json.loads((tmp_path / "retrieval.json").read_text())["benchmark"] == "retrieval"
+
+
+def test_fallback_quantization_benchmark_reports_quality_size_and_latency(tmp_path):
+    from benchmarks.benchmark_fallback_quantization import run_benchmark
+
+    result = run_benchmark(
+        n_docs=300,
+        n_queries=40,
+        d_model=128,
+        top_k=10,
+        output_path=tmp_path / "fallback_quantization.json",
+    )
+
+    assert result["benchmark"] == "fallback_quantization"
+    assert result["baseline"] == "float32"
+    assert set(result["variants"]) == {"float32", "int8", "int4"}
+    for name, variant in result["variants"].items():
+        assert variant["index_bytes"] > 0
+        assert variant["latency_ms"]["p50"] >= 0
+        assert variant["recall_at_10_vs_float32"] >= 0
+        assert variant["top1_agreement_vs_float32"] >= 0
+        assert variant["top_k_overlap_vs_float32"] >= 0
+        if name == "float32":
+            assert variant["recall_at_10_vs_float32"] == 1.0
+            assert variant["top1_agreement_vs_float32"] == 1.0
+    assert result["variants"]["int8"]["compression_vs_float32_fallback"] > 3.5
+    assert result["variants"]["int4"]["compression_vs_float32_fallback"] > 7.0
+    assert json.loads((tmp_path / "fallback_quantization.json").read_text())["benchmark"] == "fallback_quantization"
 
 
 def test_retrieval_benchmark_supports_paraphrase_query_mode(tmp_path):

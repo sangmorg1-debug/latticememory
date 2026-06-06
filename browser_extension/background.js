@@ -1,4 +1,5 @@
 import initWasm, { snap_embeddings } from "./wasm/latticememory_kernel.js";
+import { buildIndexText, searchEntriesByKey } from "./search_core.js";
 
 const DB_NAME = "latticememory-history";
 const DB_VERSION = 1;
@@ -68,13 +69,6 @@ function mockEncode(text) {
   return vector;
 }
 
-function buildIndexText({ title, url, query }) {
-  if (query && !title && !url) {
-    return String(query);
-  }
-  return `${title || url || ""}\n${url || ""}`.trim();
-}
-
 async function snapText(text) {
   await ensureWasm();
   const embedding = mockEncode(text);
@@ -98,22 +92,6 @@ async function indexPage({ url, title, lastVisitTime }) {
   await withStore("readwrite", (store) => store.put(entry));
 }
 
-function hammingDistance(leftHex, rightHex) {
-  if (!leftHex || !rightHex || leftHex.length !== rightHex.length) {
-    return Number.POSITIVE_INFINITY;
-  }
-  let distance = 0;
-  for (let i = 0; i < leftHex.length; i += 2) {
-    if (leftHex.slice(i, i + 2) !== rightHex.slice(i, i + 2)) {
-      distance += 1;
-      if (distance > MAX_HAMMING_DISTANCE) {
-        return distance;
-      }
-    }
-  }
-  return distance;
-}
-
 async function handleSearch(message) {
   const searchText = buildIndexText({
     title: message.title,
@@ -124,11 +102,7 @@ async function handleSearch(message) {
   return withStore("readonly", (store) => new Promise((resolve, reject) => {
     const request = store.getAll();
     request.onsuccess = () => {
-      const results = request.result
-        .map((entry) => ({ ...entry, hammingDistance: hammingDistance(e8Key, entry.e8Key) }))
-        .filter((entry) => entry.hammingDistance <= MAX_HAMMING_DISTANCE)
-        .sort((a, b) => b.visitedAt - a.visitedAt)
-        .slice(0, 10);
+      const results = searchEntriesByKey(request.result, e8Key, MAX_HAMMING_DISTANCE);
       resolve({ e8Key, results });
     };
     request.onerror = () => reject(request.error);

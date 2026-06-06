@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import shutil
+import subprocess
 from pathlib import Path
 
 
@@ -30,6 +32,7 @@ def test_browser_extension_contains_required_runtime_files():
     expected = [
         "background.js",
         "content.js",
+        "search_core.js",
         "popup.html",
         "popup.js",
         "wasm/latticememory_kernel_bg.wasm",
@@ -54,12 +57,38 @@ def test_background_service_worker_indexes_history_and_uses_wasm_snapper():
 
 def test_background_uses_canonical_index_text_and_hamming_search():
     source = (EXT / "background.js").read_text()
+    search_core = (EXT / "search_core.js").read_text()
 
     assert "buildIndexText" in source
     assert "indexText" in source
-    assert "hammingDistance" in source
+    assert "searchEntriesByKey" in source
     assert "MAX_HAMMING_DISTANCE" in source
+    assert "hammingDistance" in search_core
+    assert "buildIndexText" in search_core
     assert "store.getAll()" in source
+
+
+def test_browser_extension_search_core_matches_exact_and_hamming1_entries():
+    if shutil.which("node") is None:
+        raise AssertionError("node is required for browser extension search-core test")
+
+    module_url = (EXT / "search_core.js").as_uri()
+    script = """
+const mod = await import(process.argv[1]);
+const entries = [
+  { title: "Exact", url: "https://exact.test", e8Key: "000102", visitedAt: 10 },
+  { title: "Hamming 1", url: "https://near.test", e8Key: "000103", visitedAt: 20 },
+  { title: "Far", url: "https://far.test", e8Key: "050607", visitedAt: 30 }
+];
+const results = mod.searchEntriesByKey(entries, "000102", 1);
+if (results.length !== 2) throw new Error(`expected 2 results, got ${results.length}`);
+if (results[0].title !== "Hamming 1") throw new Error(`expected recent Hamming-1 first, got ${results[0].title}`);
+if (results[1].title !== "Exact") throw new Error(`expected exact second, got ${results[1].title}`);
+if (mod.buildIndexText({ title: "Title", url: "https://example.test" }) !== "Title\\nhttps://example.test") {
+  throw new Error("canonical index text mismatch");
+}
+"""
+    subprocess.run(["node", "--input-type=module", "-e", script, module_url], check=True)
 
 
 def test_popup_exposes_search_stats_clear_and_export_controls():

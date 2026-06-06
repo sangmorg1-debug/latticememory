@@ -28,6 +28,14 @@ class LatticeStats:
     e8_key_size_mb: float | None = None
     fallback_size_mb: float | None = None
     total_index_size_mb: float | None = None
+    e8_key_bytes: int | None = None
+    fallback_bytes: int | None = None
+    total_index_bytes: int | None = None
+    float32_embedding_bytes: int | None = None
+    fallback_quantization: int | None = None
+    compression_mode: str | None = None
+    key_only_compression_vs_float32: float | None = None
+    total_compression_vs_float32: float | None = None
 
 
 class LatticeIndex:
@@ -104,9 +112,10 @@ class LatticeIndex:
         docs = self._runtime.memory.num_documents
         e8_key_bytes = docs * (self._d_model // 8) * 3
         fallback_bytes = 0
+        fallback_quantization = None
         if self._runtime.memory.fallback is not None:
-            q_bits = getattr(self._runtime.memory.fallback, "quantization_bits", None)
-            if q_bits is not None:
+            fallback_quantization = getattr(self._runtime.memory.fallback, "quantization_bits", None)
+            if fallback_quantization is not None:
                 fallback_bytes = getattr(self._runtime.memory.fallback, "get_index_size_bytes", lambda: 0)()
             
         total_bytes = e8_key_bytes + fallback_bytes
@@ -116,7 +125,10 @@ class LatticeIndex:
         fallback_size_mb = fallback_bytes / (1024 * 1024)
         total_index_size_mb = total_bytes / (1024 * 1024)
         
-        compression = (float32_bytes / total_bytes) if total_bytes > 0 else 0.0
+        key_only_compression = (float32_bytes / e8_key_bytes) if e8_key_bytes > 0 else 0.0
+        total_compression = (float32_bytes / total_bytes) if total_bytes > 0 else 0.0
+        compression_mode = "hybrid_quantized_fallback" if fallback_quantization is not None else "e8_key_only"
+        compression = total_compression if fallback_quantization is not None else key_only_compression
         exact_hit_rate = (self._exact_hits / self._total_queries if self._total_queries > 0 else None)
         return LatticeStats(
             docs=docs,
@@ -126,4 +138,12 @@ class LatticeIndex:
             e8_key_size_mb=round(e8_key_size_mb, 4),
             fallback_size_mb=round(fallback_size_mb, 4),
             total_index_size_mb=round(total_index_size_mb, 4),
+            e8_key_bytes=int(e8_key_bytes),
+            fallback_bytes=int(fallback_bytes),
+            total_index_bytes=int(total_bytes),
+            float32_embedding_bytes=int(float32_bytes),
+            fallback_quantization=fallback_quantization,
+            compression_mode=compression_mode,
+            key_only_compression_vs_float32=round(key_only_compression, 1),
+            total_compression_vs_float32=round(total_compression, 1),
         )

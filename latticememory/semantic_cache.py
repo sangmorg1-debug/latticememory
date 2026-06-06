@@ -114,7 +114,7 @@ class RFSnapSemanticCache:
                 retrieval_path=result.path,
                 latency_ms=result.latency_ms,
             )
-        if result.path == "lattice_hamming" and not self.allow_neighborhood:
+        if result.path in {"lattice_hamming", "lattice_hamming1"} and not self.allow_neighborhood:
             return SemanticCacheResult(
                 hit=False,
                 hit_type="miss",

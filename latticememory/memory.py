@@ -453,7 +453,7 @@ class RFSnapLatticeMemory:
             stage_start = time.perf_counter()
             hits = self._hits_from_ann_indices(vector, ann_indices, query.top_k, query_text=query.text)
             stage_latency_ms["rerank"] = (time.perf_counter() - stage_start) * 1000
-            beam_path = "lattice_hamming" if self.beam_radius == 1 else f"lattice_beam_R{self.beam_radius}"
+            beam_path = "lattice_hamming1" if self.beam_radius == 1 else f"lattice_beam_R{self.beam_radius}"
             result = MemoryResult(
                 query=query.text,
                 hits=hits,

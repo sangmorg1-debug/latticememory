@@ -262,7 +262,7 @@ def _evaluate_pairs(runtime: RFSnapDualTextMemory, pairs: list[tuple[str, str]])
         "count": count,
         "correct_lattice_exact": correct,
         "lattice_exact_accuracy": correct / count if count else 0.0,
-        "path_counts": {path: path_counts.get(path, 0) for path in ["lattice_exact", "lattice_hamming", "fallback", "miss"]},
+            "path_counts": {path: path_counts.get(path, 0) for path in ["lattice_exact", "lattice_hamming1", "fallback", "miss"]},
         "rows": rows,
     }
 

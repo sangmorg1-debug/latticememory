@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol, Sequence
+from typing import Callable, Protocol, Sequence
 
 import torch
 import torch.nn.functional as F
@@ -369,6 +369,7 @@ class ContrastiveTrainResult:
     final_train_accuracy: float  # fraction of training pairs where query E8 key == doc E8 key
     hard_negative_pairs: int
     synthetic_hard_negative_pairs: int
+    epoch_metrics: list[dict]
 
 
 def train_lattice_contrastive_encoder(
@@ -395,6 +396,7 @@ def train_lattice_contrastive_encoder(
     adapter_kind: str = "linear",
     adapter_hidden_multiplier: float = 2.0,
     device: str | torch.device = "cpu",
+    epoch_evaluator: Callable[[int, torch.nn.Module], dict] | None = None,
 ) -> ContrastiveTrainResult:
     """Train a query-side linear adapter for discrete E8 routing.
 
@@ -495,6 +497,7 @@ def train_lattice_contrastive_encoder(
     hard_loss_history: list[float] = []
     neighborhood_loss_history: list[float] = []
     synthetic_hard_loss_history: list[float] = []
+    epoch_metrics: list[dict] = []
     rng = torch.Generator()
     rng.manual_seed(seed)
 
@@ -571,6 +574,11 @@ def train_lattice_contrastive_encoder(
             if epoch_synthetic_hard_losses
             else 0.0
         )
+        if epoch_evaluator is not None:
+            adapter.eval()
+            with torch.no_grad():
+                epoch_metrics.append(epoch_evaluator(epoch + 1, adapter))
+            adapter.train()
 
     # Step 6: compute final train accuracy (exact E8 key match)
     with torch.no_grad():
@@ -624,6 +632,7 @@ def train_lattice_contrastive_encoder(
         final_train_accuracy=final_train_accuracy,
         hard_negative_pairs=hard_negative_pairs,
         synthetic_hard_negative_pairs=synthetic_hard_negative_pairs,
+        epoch_metrics=epoch_metrics,
     )
 
 

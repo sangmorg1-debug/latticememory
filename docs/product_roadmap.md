@@ -90,7 +90,7 @@ graph TD
 | **Multimodal Retrieval** | Medium | Cross-modal search without vector scans | Contrastive Adapter Training |
 | **MoE routing substrate** | Low (Research Stage) | Highly novel academic contribution | Token geometry validation & sub-lattice routing proofs |
 | **Cross-Model Semantic DNS** | High (Today) | Permanent model-agnostic internet registry | Cross-model alignment substrate |
-| **Enterprise QA & Search** | Medium-High (with Hybrid Fallback) | RAG latency wins on cache hits; compression pending Int4/Int8 fallback | Implement and benchmark compressed dense fallback |
+| **Enterprise QA & Search** | Medium-High (with Hybrid Fallback) | RAG latency wins on cache hits; Int8 fallback offers measured compression/quality tradeoff | Benchmark larger real corpora and tune fallback kernels |
 
 ---
 
@@ -118,4 +118,4 @@ Through empirical diagnostics on the **MS MARCO** passage retrieval dataset (usi
 To maintain float32-baseline retrieval quality on general QA tasks, LatticeMemory uses a **hybrid retrieval pipeline**:
 1. **Lattice Path (Symmetric/Exact Cache)**: First, attempt $O(1)$ lookup via exact E8 key match or Hamming-1 neighborhood search. This handles duplicate queries and exact paraphrase matches instantly (latency $< 1\text{ ms}$).
 2. **Dense Fallback Path (Asymmetric/General QA)**: If the lattice lookup misses, fall back to standard cosine similarity search over the index's stored embeddings.
-3. **Index Compression via Int4/Int8 Fallback**: The current fallback path is dense-vector based. Quantized **Int4 or Int8** fallback storage is the next implementation/benchmark target; any equal-recall statement must be measured against the float32 vector baseline.
+3. **Index Compression via Quantized Fallback**: Int8 and Int4 fallback storage are implemented. On the 1K-doc `dfrokido/bge-large-e8-snap` paraphrase fallback benchmark, Int8 reached **95.1% Recall@10 overlap** and **91.0% top-1 agreement** vs float32 at **4× fallback compression**. Int4 reached only **12.1% Recall@10 overlap**, so it remains experimental for QA/RAG quality.

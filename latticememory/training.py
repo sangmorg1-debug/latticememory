@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import time
 from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -16,8 +17,10 @@ from latticememory.dual_encoder import (
     LatticeDualEncoder,
     RFSnapDualTextMemory,
     TextEncoder,
+    _check_dim,
     _e8_address_cross_entropy,
     _e8_expected_hamming_loss,
+    _hamming_distance,
     train_lattice_contrastive_encoder,
 )
 from latticememory.rag.e8_retriever import E8LatticeDB
@@ -48,6 +51,68 @@ class LatticeRoutingTrainResult:
     dataset_name: str | None = None
     dataset_config: str | None = None
     train_split: str | None = None
+
+
+@dataclass(frozen=True)
+class FullEncoderTrainResult:
+    dual_encoder: LatticeDualEncoder
+    encoder: TextEncoder
+    training_mode: str
+    train_loss_history: list[float]
+    contrastive_loss_history: list[float]
+    address_loss_history: list[float]
+    neighborhood_loss_history: list[float]
+    negative_loss_history: list[float]
+    train_min_hamming_history: list[int]
+    train_mean_hamming_history: list[float]
+    train_lattice_route_rate_history: list[float]
+    epoch_metrics: list[dict]
+    epochs_trained: int
+    examples_seen: int
+    negatives_seen: int
+    final_train_accuracy: float
+    dataset_name: str | None = None
+    dataset_config: str | None = None
+    train_split: str | None = None
+
+
+BUILTIN_STS_EXAMPLES: tuple[tuple[str, str, float], ...] = (
+    ("A person is playing a piano.", "Someone is performing music on a piano.", 4.8),
+    ("A dog is running through grass.", "An animal is moving outdoors.", 3.9),
+    ("The capital of France is Paris.", "Paris is the capital city of France.", 5.0),
+    ("A man is cooking dinner.", "Someone is preparing a meal.", 4.4),
+    ("Children are playing in a park.", "Kids are outside playing.", 4.7),
+    ("A woman is reading a book.", "A person reads a novel.", 4.3),
+    ("The stock market closed higher today.", "Financial markets ended the day up.", 4.1),
+    ("A cat sleeps on a sofa.", "A vehicle is parked near a building.", 0.4),
+    ("Two people are riding bicycles.", "People are biking together.", 4.6),
+    ("The weather is cold and rainy.", "It is warm and sunny outside.", 0.8),
+    ("A scientist looks through a microscope.", "A researcher uses lab equipment.", 4.2),
+    ("A football player kicks the ball.", "An athlete plays soccer.", 3.8),
+)
+
+
+def load_sts_examples(
+    *,
+    source: str = "builtin",
+    limit: int | None = None,
+    split: str = "validation",
+) -> list[tuple[str, str, float]]:
+    if source == "builtin":
+        examples = list(BUILTIN_STS_EXAMPLES)
+    elif source == "hf":
+        try:
+            from datasets import load_dataset
+        except ImportError as exc:  # pragma: no cover
+            raise ImportError("datasets is required for HuggingFace STS-B loading") from exc
+        rows = load_dataset("glue", "stsb", split=split)
+        examples = [
+            (str(row["sentence1"]), str(row["sentence2"]), float(row["label"]))
+            for row in rows
+        ]
+    else:
+        raise ValueError("source must be 'builtin' or 'hf'")
+    return examples[:limit] if limit is not None else examples
 
 
 def build_msmarco_examples(
@@ -211,6 +276,9 @@ def train_lattice_adapter_from_examples(
     adapter_hidden_multiplier: float = 1.0,
     seed: int = 42,
     device: str | torch.device = "cpu",
+    sts_examples: Sequence[tuple[str, str, float]] | None = None,
+    sts_batch_size: int = 64,
+    epoch_metrics_path: str | Path | None = None,
     dataset_name: str | None = None,
     dataset_config: str | None = None,
     train_split: str | None = None,
@@ -219,11 +287,21 @@ def train_lattice_adapter_from_examples(
         raise ValueError("examples must not be empty")
 
     pairs = [(example.query, example.positive) for example in examples]
-    hard_negatives = [negative for example in examples for negative in example.negatives]
+    hard_negatives = [negative for example in examples for negative in example.negatives] if lambda_hard > 0 else []
+    epoch_evaluator = None
+    if sts_examples:
+        epoch_evaluator = _build_sts_epoch_evaluator(
+            base_encoder=base_encoder,
+            sts_examples=sts_examples,
+            d_model=d_model,
+            device=device,
+            batch_size=sts_batch_size,
+            epoch_metrics_path=epoch_metrics_path,
+        )
     train_result = train_lattice_contrastive_encoder(
         base_encoder=base_encoder,
         pairs=pairs,
-        hard_negative_texts=hard_negatives,
+        hard_negative_texts=hard_negatives or None,
         d_model=d_model,
         epochs=epochs,
         batch_size=batch_size,
@@ -236,12 +314,261 @@ def train_lattice_adapter_from_examples(
         adapter_hidden_multiplier=adapter_hidden_multiplier,
         seed=seed,
         device=device,
+        epoch_evaluator=epoch_evaluator,
     )
     return LatticeRoutingTrainResult(
         dual_encoder=train_result.dual_encoder,
         train_result=train_result,
         examples_seen=len(examples),
         negatives_seen=len(hard_negatives),
+        dataset_name=dataset_name,
+        dataset_config=dataset_config,
+        train_split=train_split,
+    )
+
+
+def train_full_encoder_from_examples(
+    *,
+    encoder: TextEncoder,
+    examples: Sequence[RoutingTrainingExample],
+    d_model: int,
+    epochs: int = 5,
+    batch_size: int = 4,
+    gradient_accumulation_steps: int = 4,
+    lr: float = 2e-5,
+    weight_decay: float = 1e-4,
+    temperature: float = 0.05,
+    lambda_address: float = 50.0,
+    lambda_neighborhood: float = 1.0,
+    lambda_hard: float = 1.0,
+    seed: int = 42,
+    device: str | torch.device = "cpu",
+    fp16: bool = True,
+    gradient_checkpointing: bool = True,
+    sts_examples: Sequence[tuple[str, str, float]] | None = None,
+    sts_batch_size: int = 64,
+    epoch_metrics_path: str | Path | None = None,
+    progress_metrics_path: str | Path | None = None,
+    log_every_batches: int = 0,
+    dataset_name: str | None = None,
+    dataset_config: str | None = None,
+    train_split: str | None = None,
+    checkpoint_dir: str | Path | None = None,
+) -> FullEncoderTrainResult:
+    """Fine-tune a trainable text encoder for direct E8 query-to-passage routing.
+
+    Unlike the adapter path, this function never precomputes document target
+    keys. Query and passage embeddings are produced live in each batch, and the
+    E8 target key is derived from the current passage embedding after detach().
+    """
+
+    if not examples:
+        raise ValueError("examples must not be empty")
+    if epochs < 1:
+        raise ValueError("epochs must be >= 1")
+    if batch_size < 1:
+        raise ValueError("batch_size must be >= 1")
+    if gradient_accumulation_steps < 1:
+        raise ValueError("gradient_accumulation_steps must be >= 1")
+    if log_every_batches < 0:
+        raise ValueError("log_every_batches must be >= 0")
+    if d_model <= 0 or d_model % 8 != 0:
+        raise ValueError("d_model must be positive and divisible by 8")
+
+    train_device = torch.device(device)
+    torch.manual_seed(seed)
+    _move_encoder_to_device(encoder, train_device)
+    if gradient_checkpointing:
+        _enable_gradient_checkpointing(encoder)
+
+    loss_fn = E8RoutingLoss(
+        d_model=d_model,
+        temperature=temperature,
+        lambda_address=lambda_address,
+        lambda_hamming=lambda_neighborhood,
+        lambda_negative=lambda_hard,
+    ).to(train_device)
+    parameters = [parameter for parameter in _encoder_parameters(encoder) if parameter.requires_grad]
+    if not parameters:
+        raise ValueError("encoder has no trainable parameters")
+    optimizer = torch.optim.AdamW(parameters, lr=lr, weight_decay=weight_decay)
+
+    use_amp = bool(fp16 and train_device.type == "cuda")
+    scaler = torch.amp.GradScaler("cuda", enabled=use_amp) if hasattr(torch, "amp") else torch.cuda.amp.GradScaler(enabled=use_amp)
+    rng = torch.Generator()
+    rng.manual_seed(seed)
+    n = len(examples)
+    negatives_seen = sum(len(example.negatives) for example in examples) if lambda_hard > 0 else 0
+
+    epoch_evaluator = None
+    if sts_examples:
+        epoch_evaluator = _build_full_encoder_sts_epoch_evaluator(
+            encoder=encoder,
+            sts_examples=sts_examples,
+            d_model=d_model,
+            device=train_device,
+            batch_size=sts_batch_size,
+            epoch_metrics_path=epoch_metrics_path,
+        )
+    progress_path = Path(progress_metrics_path) if progress_metrics_path is not None else None
+    if progress_path is not None:
+        progress_path.parent.mkdir(parents=True, exist_ok=True)
+        progress_path.write_text("", encoding="utf-8")
+
+    train_loss_history: list[float] = []
+    contrastive_loss_history: list[float] = []
+    address_loss_history: list[float] = []
+    neighborhood_loss_history: list[float] = []
+    negative_loss_history: list[float] = []
+    train_min_hamming_history: list[int] = []
+    train_mean_hamming_history: list[float] = []
+    train_lattice_route_rate_history: list[float] = []
+    epoch_metrics: list[dict] = []
+
+    for epoch in range(epochs):
+        _set_encoder_train(encoder)
+        optimizer.zero_grad(set_to_none=True)
+        perm = torch.randperm(n, generator=rng)
+        total_batches = int((n + batch_size - 1) // batch_size)
+        epoch_started = time.perf_counter()
+        epoch_losses: list[float] = []
+        epoch_contrastive: list[float] = []
+        epoch_address: list[float] = []
+        epoch_hamming: list[float] = []
+        epoch_negative: list[float] = []
+
+        for step, start in enumerate(range(0, n, batch_size), start=1):
+            batch_idx = perm[start : start + batch_size]
+            batch_examples = [examples[int(idx)] for idx in batch_idx.tolist()]
+            queries = [example.query for example in batch_examples]
+            positives = [example.positive for example in batch_examples]
+            negative_texts = _select_batch_negatives(batch_examples, epoch=epoch) if lambda_hard > 0 else []
+
+            with torch.autocast(device_type=train_device.type, dtype=torch.float16, enabled=use_amp):
+                query_embeddings = _encode_trainable_texts(
+                    encoder,
+                    queries,
+                    device=train_device,
+                    d_model=d_model,
+                )
+                positive_embeddings = _encode_trainable_texts(
+                    encoder,
+                    positives,
+                    device=train_device,
+                    d_model=d_model,
+                )
+                negative_embeddings = (
+                    _encode_trainable_texts(
+                        encoder,
+                        negative_texts,
+                        device=train_device,
+                        d_model=d_model,
+                    ).unsqueeze(1)
+                    if negative_texts
+                    else None
+                )
+                output = loss_fn(query_embeddings, positive_embeddings, negative_embeddings)
+                scaled_loss = output.total / gradient_accumulation_steps
+
+            scaler.scale(scaled_loss).backward()
+            should_step = step % gradient_accumulation_steps == 0 or start + batch_size >= n
+            if should_step:
+                scaler.step(optimizer)
+                scaler.update()
+                optimizer.zero_grad(set_to_none=True)
+
+            epoch_losses.append(float(output.total.detach()))
+            epoch_contrastive.append(float(output.contrastive.detach()))
+            epoch_address.append(float(output.address.detach()))
+            epoch_hamming.append(float(output.hamming.detach()))
+            epoch_negative.append(float(output.negative.detach()))
+            if log_every_batches and (step % log_every_batches == 0 or step == total_batches):
+                elapsed = max(time.perf_counter() - epoch_started, 1e-9)
+                batches_per_sec = step / elapsed
+                row = {
+                    "metric": "train_progress",
+                    "epoch": epoch + 1,
+                    "epochs": epochs,
+                    "batch": step,
+                    "total_batches": total_batches,
+                    "elapsed_sec": round(elapsed, 3),
+                    "batches_per_sec": round(batches_per_sec, 6),
+                    "eta_epoch_sec": round((total_batches - step) / batches_per_sec, 3)
+                    if batches_per_sec > 0
+                    else 0.0,
+                    "loss": round(float(output.total.detach()), 6),
+                    "address_loss": round(float(output.address.detach()), 6),
+                    "hamming_loss": round(float(output.hamming.detach()), 6),
+                }
+                line = json.dumps(row, sort_keys=True)
+                print(line, flush=True)
+                if progress_path is not None:
+                    with progress_path.open("a", encoding="utf-8") as handle:
+                        handle.write(line + "\n")
+
+        train_loss_history.append(_mean(epoch_losses))
+        contrastive_loss_history.append(_mean(epoch_contrastive))
+        address_loss_history.append(_mean(epoch_address))
+        neighborhood_loss_history.append(_mean(epoch_hamming))
+        negative_loss_history.append(_mean(epoch_negative))
+
+        hamming_summary = _routing_hamming_summary_for_encoder(
+            encoder=encoder,
+            examples=examples,
+            d_model=d_model,
+            batch_size=sts_batch_size,
+        )
+        train_min_hamming_history.append(int(hamming_summary["min_hamming_distance"]))
+        train_mean_hamming_history.append(float(hamming_summary["mean_hamming_distance"]))
+        train_lattice_route_rate_history.append(float(hamming_summary["lattice_route_rate"]))
+
+        if epoch_evaluator is not None:
+            _set_encoder_eval(encoder)
+            with torch.no_grad():
+                epoch_metrics.append(epoch_evaluator(epoch + 1))
+
+        if checkpoint_dir is not None:
+            _set_encoder_eval(encoder)
+            ckpt_path = Path(checkpoint_dir) / f"epoch_{epoch + 1}"
+            ckpt_path.mkdir(parents=True, exist_ok=True)
+            save = getattr(encoder, "save", None)
+            if callable(save):
+                save(str(ckpt_path))
+                ckpt_row = {
+                    "metric": "checkpoint",
+                    "epoch": epoch + 1,
+                    "path": str(ckpt_path),
+                    "mean_hamming": train_mean_hamming_history[-1] if train_mean_hamming_history else None,
+                    "train_loss": train_loss_history[-1] if train_loss_history else None,
+                }
+                print(json.dumps(ckpt_row, sort_keys=True), flush=True)
+
+    _set_encoder_eval(encoder)
+    dual = LatticeDualEncoder(
+        document_encoder=encoder,
+        query_encoder=encoder,
+        d_model=d_model,
+        training_pairs=n,
+        ridge=0.0,
+    )
+    final_route_rate = train_lattice_route_rate_history[-1] if train_lattice_route_rate_history else 0.0
+    return FullEncoderTrainResult(
+        dual_encoder=dual,
+        encoder=encoder,
+        training_mode="full_encoder",
+        train_loss_history=train_loss_history,
+        contrastive_loss_history=contrastive_loss_history,
+        address_loss_history=address_loss_history,
+        neighborhood_loss_history=neighborhood_loss_history,
+        negative_loss_history=negative_loss_history,
+        train_min_hamming_history=train_min_hamming_history,
+        train_mean_hamming_history=train_mean_hamming_history,
+        train_lattice_route_rate_history=train_lattice_route_rate_history,
+        epoch_metrics=epoch_metrics,
+        epochs_trained=epochs,
+        examples_seen=len(examples),
+        negatives_seen=negatives_seen,
+        final_train_accuracy=final_route_rate,
         dataset_name=dataset_name,
         dataset_config=dataset_config,
         train_split=train_split,
@@ -261,6 +588,13 @@ def evaluate_routing_examples(
         d_model=dual_encoder.d_model,
     )
     runtime.add_texts(docs, doc_ids=[f"doc-{idx}" for idx in range(len(docs))])
+    with torch.no_grad():
+        indexed_doc_embeddings = runtime._encode_documents(docs)
+    lattice = runtime.memory.lattice
+    indexed_doc_keys = [bytes(lattice._quantize_to_indices(embedding)) for embedding in indexed_doc_embeddings]
+    key_counts = Counter(indexed_doc_keys)
+    collision_key_count = sum(1 for count in key_counts.values() if count > 1)
+    documents_in_collision_keys = sum(count for count in key_counts.values() if count > 1)
 
     # Compute query-to-positive-doc Hamming distance distribution
     queries = [example.query for example in examples]
@@ -272,7 +606,6 @@ def evaluate_routing_examples(
         doc_embeddings = runtime._encode_documents(positives)
         query_embeddings = runtime._encode_queries(queries)
         
-    lattice = runtime.memory.lattice
     for i in range(len(examples)):
         doc_key = lattice._quantize_to_indices(doc_embeddings[i])
         query_key = lattice._quantize_to_indices(query_embeddings[i])
@@ -335,12 +668,17 @@ def evaluate_routing_examples(
         "p95_hamming_distance": p95_dist,
         "p99_hamming_distance": p99_dist,
         "hamming_distance_histogram": hist_dict,
+        "unique_document_keys": len(key_counts),
+        "max_documents_per_key": max(key_counts.values()) if key_counts else 0,
+        "collision_key_count": collision_key_count,
+        "documents_in_collision_keys": documents_in_collision_keys,
         "rows": rows,
     }
 
 
 def train_and_evaluate_msmarco(
     *,
+    training_mode: str = "adapter",
     model: str = "dfrokido/bge-large-e8-snap",
     dataset_name: str = "microsoft/ms_marco",
     dataset_config: str = "v1.1",
@@ -352,18 +690,31 @@ def train_and_evaluate_msmarco(
     epochs: int = 10,
     batch_size: int = 32,
     lr: float = 1e-3,
-    lambda_address: float = 10.0,
+    lambda_address: float | None = None,
     lambda_neighborhood: float = 0.5,
     lambda_hard: float = 1.0,
     adapter_kind: str = "residual_mlp",
     adapter_hidden_multiplier: float = 1.0,
+    gradient_accumulation_steps: int = 4,
+    fp16: bool = True,
+    gradient_checkpointing: bool = True,
+    log_every_batches: int = 0,
+    sts_eval_each_epoch: bool = False,
+    sts_source: str = "builtin",
+    sts_limit: int = 64,
+    sts_split: str = "validation",
     output_dir: str | Path | None = None,
+    checkpoint_every_epoch: bool = False,
     device: str = "auto",
 ) -> dict:
     from sentence_transformers import SentenceTransformer
 
+    if training_mode not in {"adapter", "full_encoder"}:
+        raise ValueError("training_mode must be 'adapter' or 'full_encoder'")
     if device == "auto":
         device = "cuda" if torch.cuda.is_available() else "cpu"
+    if lambda_address is None:
+        lambda_address = 50.0 if training_mode == "full_encoder" else 10.0
     encoder = SentenceTransformer(model, device=device)
     embedding_dim_fn = getattr(encoder, "get_embedding_dimension", None)
     sentence_dim_fn = getattr(encoder, "get_sentence_embedding_dimension", None)
@@ -390,27 +741,100 @@ def train_and_evaluate_msmarco(
         min_negatives=min_negatives,
         limit=eval_limit,
     )
-    train_result = train_lattice_adapter_from_examples(
-        base_encoder=encoder,
-        examples=train_examples,
-        d_model=d_model,
-        epochs=epochs,
-        batch_size=batch_size,
-        lr=lr,
-        lambda_address=lambda_address,
-        lambda_neighborhood=lambda_neighborhood,
-        lambda_hard=lambda_hard,
-        adapter_kind=adapter_kind,
-        adapter_hidden_multiplier=adapter_hidden_multiplier,
-        device=device,
-        dataset_name=dataset_name,
-        dataset_config=dataset_config,
-        train_split=train_split,
+    output_path = Path(output_dir) if output_dir is not None else None
+    if output_path is not None:
+        output_path.mkdir(parents=True, exist_ok=True)
+    sts_examples = (
+        load_sts_examples(source=sts_source, limit=sts_limit, split=sts_split)
+        if sts_eval_each_epoch
+        else None
     )
-    train_metrics = evaluate_routing_examples(train_result.dual_encoder, train_examples, top_k=1)
-    eval_metrics = evaluate_routing_examples(train_result.dual_encoder, eval_examples, top_k=1)
+    epoch_metrics_path = (output_path / "epoch_metrics.jsonl") if output_path is not None and sts_examples else None
+    progress_metrics_path = (output_path / "progress_metrics.jsonl") if output_path is not None else None
+    if training_mode == "adapter":
+        train_result = train_lattice_adapter_from_examples(
+            base_encoder=encoder,
+            examples=train_examples,
+            d_model=d_model,
+            epochs=epochs,
+            batch_size=batch_size,
+            lr=lr,
+            lambda_address=lambda_address,
+            lambda_neighborhood=lambda_neighborhood,
+            lambda_hard=lambda_hard,
+            adapter_kind=adapter_kind,
+            adapter_hidden_multiplier=adapter_hidden_multiplier,
+            device=device,
+            sts_examples=sts_examples,
+            sts_batch_size=batch_size,
+            epoch_metrics_path=epoch_metrics_path,
+            dataset_name=dataset_name,
+            dataset_config=dataset_config,
+            train_split=train_split,
+        )
+        dual_encoder = train_result.dual_encoder
+        train_loss_history = train_result.train_result.train_loss_history
+        address_loss_history = train_result.train_result.address_loss_history
+        hard_loss_history = train_result.train_result.hard_loss_history
+        epoch_metrics = train_result.train_result.epoch_metrics
+        final_train_accuracy = train_result.train_result.final_train_accuracy
+        examples_seen = train_result.examples_seen
+        negatives_seen = train_result.negatives_seen
+        extra_result_fields = {
+            "adapter_kind": adapter_kind,
+            "adapter_hidden_multiplier": adapter_hidden_multiplier,
+        }
+    else:
+        checkpoint_dir = (output_path / "checkpoints") if (checkpoint_every_epoch and output_path is not None) else None
+        train_result = train_full_encoder_from_examples(
+            encoder=encoder,
+            examples=train_examples,
+            d_model=d_model,
+            epochs=epochs,
+            batch_size=batch_size,
+            gradient_accumulation_steps=gradient_accumulation_steps,
+            lr=lr,
+            lambda_address=lambda_address,
+            lambda_neighborhood=lambda_neighborhood,
+            lambda_hard=lambda_hard,
+            fp16=fp16,
+            gradient_checkpointing=gradient_checkpointing,
+            device=device,
+            sts_examples=sts_examples,
+            sts_batch_size=batch_size,
+            epoch_metrics_path=epoch_metrics_path,
+            progress_metrics_path=progress_metrics_path,
+            log_every_batches=log_every_batches,
+            dataset_name=dataset_name,
+            dataset_config=dataset_config,
+            train_split=train_split,
+            checkpoint_dir=checkpoint_dir,
+        )
+        dual_encoder = train_result.dual_encoder
+        train_loss_history = train_result.train_loss_history
+        address_loss_history = train_result.address_loss_history
+        hard_loss_history = train_result.negative_loss_history
+        epoch_metrics = train_result.epoch_metrics
+        final_train_accuracy = train_result.final_train_accuracy
+        examples_seen = train_result.examples_seen
+        negatives_seen = train_result.negatives_seen
+        extra_result_fields = {
+            "gradient_accumulation_steps": gradient_accumulation_steps,
+            "fp16": bool(fp16),
+            "gradient_checkpointing": bool(gradient_checkpointing),
+            "train_min_hamming_history": train_result.train_min_hamming_history,
+            "train_mean_hamming_history": train_result.train_mean_hamming_history,
+            "train_lattice_route_rate_history": train_result.train_lattice_route_rate_history,
+            "contrastive_loss_history": train_result.contrastive_loss_history,
+            "neighborhood_loss_history": train_result.neighborhood_loss_history,
+            "log_every_batches": int(log_every_batches),
+        }
+
+    train_metrics = evaluate_routing_examples(dual_encoder, train_examples, top_k=1)
+    eval_metrics = evaluate_routing_examples(dual_encoder, eval_examples, top_k=1)
 
     result = {
+        "training_mode": training_mode,
         "model": model,
         "dataset_name": dataset_name,
         "dataset_config": dataset_config,
@@ -419,29 +843,35 @@ def train_and_evaluate_msmarco(
         "d_model": d_model,
         "train_limit": train_limit,
         "eval_limit": eval_limit,
-        "adapter_kind": adapter_kind,
-        "adapter_hidden_multiplier": adapter_hidden_multiplier,
         "epochs": epochs,
         "lambda_address": lambda_address,
         "lambda_neighborhood": lambda_neighborhood,
         "lambda_hard": lambda_hard,
-        "examples_seen": train_result.examples_seen,
-        "negatives_seen": train_result.negatives_seen,
-        "train_loss_history": train_result.train_result.train_loss_history,
-        "address_loss_history": train_result.train_result.address_loss_history,
-        "hard_loss_history": train_result.train_result.hard_loss_history,
-        "final_train_accuracy": train_result.train_result.final_train_accuracy,
+        "examples_seen": examples_seen,
+        "negatives_seen": negatives_seen,
+        "train_loss_history": train_loss_history,
+        "address_loss_history": address_loss_history,
+        "hard_loss_history": hard_loss_history,
+        "epoch_metrics": epoch_metrics,
+        "final_train_accuracy": final_train_accuracy,
         "train": _metrics_without_rows(train_metrics),
         "eval": _metrics_without_rows(eval_metrics),
     }
+    result.update(extra_result_fields)
     if output_dir is not None:
-        output_path = Path(output_dir)
-        output_path.mkdir(parents=True, exist_ok=True)
-        adapter_path = output_path / "query_adapter.pt"
         metrics_path = output_path / "metrics.json"
-        train_result.dual_encoder.query_encoder.save_adapter(adapter_path)
+        if training_mode == "adapter":
+            adapter_path = output_path / "query_adapter.pt"
+            train_result.dual_encoder.query_encoder.save_adapter(adapter_path)
+            result["adapter_path"] = str(adapter_path)
+        else:
+            model_path = output_path / "full_encoder"
+            save = getattr(encoder, "save", None)
+            if not callable(save):
+                raise TypeError("full-encoder training requires encoder.save(path) for output_dir")
+            save(str(model_path))
+            result["model_path"] = str(model_path)
         metrics_path.write_text(json.dumps(result, indent=2, sort_keys=True), encoding="utf-8")
-        result["adapter_path"] = str(adapter_path)
         result["metrics_path"] = str(metrics_path)
     return result
 
@@ -501,8 +931,292 @@ def _metrics_without_rows(metrics: dict) -> dict:
     return {key: value for key, value in metrics.items() if key != "rows"}
 
 
+def _build_sts_epoch_evaluator(
+    *,
+    base_encoder: TextEncoder,
+    sts_examples: Sequence[tuple[str, str, float]],
+    d_model: int,
+    device: str | torch.device,
+    batch_size: int,
+    epoch_metrics_path: str | Path | None,
+):
+    left_texts = [left for left, _right, _score in sts_examples]
+    right_texts = [right for _left, right, _score in sts_examples]
+    gold = [float(score) / 5.0 for _left, _right, score in sts_examples]
+    left_embeddings = _encode_texts(base_encoder, left_texts, batch_size=batch_size)
+    right_embeddings = _encode_texts(base_encoder, right_texts, batch_size=batch_size)
+    if left_embeddings.shape != right_embeddings.shape:
+        raise ValueError("STS left and right embeddings must have the same shape")
+    if left_embeddings.dim() != 2 or left_embeddings.shape[1] != d_model:
+        raise ValueError(f"STS encoder dim must be {d_model}, got {tuple(left_embeddings.shape)}")
+    eval_device = torch.device(device)
+    left_embeddings = left_embeddings.to(eval_device)
+    right_embeddings = right_embeddings.to(eval_device)
+    metrics_path = Path(epoch_metrics_path) if epoch_metrics_path is not None else None
+    if metrics_path is not None:
+        metrics_path.parent.mkdir(parents=True, exist_ok=True)
+        metrics_path.write_text("", encoding="utf-8")
+
+    def evaluate(epoch: int, adapter: torch.nn.Module) -> dict:
+        adapted_left = adapter(left_embeddings)
+        predicted = (
+            F.normalize(adapted_left, dim=-1)
+            * F.normalize(right_embeddings, dim=-1)
+        ).sum(dim=-1).detach().cpu().tolist()
+        metrics = _sts_metrics(predicted, gold)
+        row = {
+            "epoch": int(epoch),
+            "metric": "sts",
+            "source": "builtin_or_hf",
+            "count": len(gold),
+            **metrics,
+        }
+        line = json.dumps(row, sort_keys=True)
+        print(line, flush=True)
+        if metrics_path is not None:
+            with metrics_path.open("a", encoding="utf-8") as handle:
+                handle.write(line + "\n")
+        return row
+
+    return evaluate
+
+
+def _build_full_encoder_sts_epoch_evaluator(
+    *,
+    encoder: TextEncoder,
+    sts_examples: Sequence[tuple[str, str, float]],
+    d_model: int,
+    device: str | torch.device,
+    batch_size: int,
+    epoch_metrics_path: str | Path | None,
+):
+    left_texts = [left for left, _right, _score in sts_examples]
+    right_texts = [right for _left, right, _score in sts_examples]
+    gold = [float(score) / 5.0 for _left, _right, score in sts_examples]
+    eval_device = torch.device(device)
+    metrics_path = Path(epoch_metrics_path) if epoch_metrics_path is not None else None
+    if metrics_path is not None:
+        metrics_path.parent.mkdir(parents=True, exist_ok=True)
+        metrics_path.write_text("", encoding="utf-8")
+
+    def evaluate(epoch: int) -> dict:
+        left_embeddings = _encode_trainable_texts(
+            encoder,
+            left_texts,
+            device=eval_device,
+            d_model=d_model,
+            batch_size=batch_size,
+        )
+        right_embeddings = _encode_trainable_texts(
+            encoder,
+            right_texts,
+            device=eval_device,
+            d_model=d_model,
+            batch_size=batch_size,
+        )
+        predicted = (
+            F.normalize(left_embeddings, dim=-1)
+            * F.normalize(right_embeddings, dim=-1)
+        ).sum(dim=-1).detach().cpu().tolist()
+        metrics = _sts_metrics(predicted, gold)
+        row = {
+            "epoch": int(epoch),
+            "metric": "sts",
+            "source": "builtin_or_hf",
+            "count": len(gold),
+            **metrics,
+        }
+        line = json.dumps(row, sort_keys=True)
+        print(line, flush=True)
+        if metrics_path is not None:
+            with metrics_path.open("a", encoding="utf-8") as handle:
+                handle.write(line + "\n")
+        return row
+
+    return evaluate
+
+
+def _encode_texts(encoder: TextEncoder, texts: Sequence[str], *, batch_size: int) -> torch.Tensor:
+    return torch.as_tensor(encoder.encode(list(texts), batch_size=batch_size), dtype=torch.float32)
+
+
+def _encode_trainable_texts(
+    encoder: TextEncoder,
+    texts: Sequence[str],
+    *,
+    device: torch.device,
+    d_model: int,
+    batch_size: int | None = None,
+) -> torch.Tensor:
+    text_list = list(texts)
+    if not text_list:
+        return torch.empty((0, d_model), dtype=torch.float32, device=device)
+    tokenize = getattr(encoder, "tokenize", None)
+    if tokenize is None:
+        raise TypeError("full-encoder training requires an encoder with tokenize() and forward()")
+    rows = []
+    step = batch_size or len(text_list)
+    for start in range(0, len(text_list), step):
+        features = tokenize(text_list[start : start + step])
+        features = _move_features_to_device(features, device)
+        output = encoder(features)  # type: ignore[misc]
+        if hasattr(output, "keys") and "sentence_embedding" in output:
+            embeddings = output["sentence_embedding"]
+        elif isinstance(output, dict):
+            embeddings = output.get("sentence_embedding")
+        else:
+            embeddings = output
+        if embeddings is None:
+            raise ValueError("encoder forward output must include sentence_embedding")
+        embeddings = torch.as_tensor(embeddings)
+        _check_dim(embeddings, d_model)
+        rows.append(embeddings)
+    return torch.cat(rows, dim=0)
+
+
+def _move_features_to_device(value, device: torch.device):
+    if torch.is_tensor(value):
+        return value.to(device)
+    move = getattr(value, "to", None)
+    if callable(move) and not isinstance(value, (dict, list, tuple)):
+        return move(device)
+    if isinstance(value, dict):
+        return {key: _move_features_to_device(item, device) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_move_features_to_device(item, device) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_move_features_to_device(item, device) for item in value)
+    return value
+
+
+def _move_encoder_to_device(encoder: TextEncoder, device: torch.device) -> None:
+    move = getattr(encoder, "to", None)
+    if callable(move):
+        move(device)
+
+
+def _set_encoder_train(encoder: TextEncoder) -> None:
+    train = getattr(encoder, "train", None)
+    if callable(train):
+        train()
+
+
+def _set_encoder_eval(encoder: TextEncoder) -> None:
+    eval_fn = getattr(encoder, "eval", None)
+    if callable(eval_fn):
+        eval_fn()
+
+
+def _encoder_parameters(encoder: TextEncoder):
+    parameters = getattr(encoder, "parameters", None)
+    if not callable(parameters):
+        return []
+    return list(parameters())
+
+
+def _enable_gradient_checkpointing(encoder: TextEncoder) -> bool:
+    enabled = False
+    modules = list(encoder.modules()) if callable(getattr(encoder, "modules", None)) else [encoder]
+    for module in modules:
+        method = getattr(module, "gradient_checkpointing_enable", None)
+        if callable(method):
+            method()
+            enabled = True
+        config = getattr(module, "config", None)
+        if config is not None and hasattr(config, "use_cache"):
+            config.use_cache = False
+    return enabled
+
+
+def _select_batch_negatives(examples: Sequence[RoutingTrainingExample], *, epoch: int) -> list[str]:
+    negatives = []
+    for position, example in enumerate(examples):
+        if not example.negatives:
+            return []
+        negatives.append(example.negatives[(epoch + position) % len(example.negatives)])
+    return negatives
+
+
+def _routing_hamming_summary_for_encoder(
+    *,
+    encoder: TextEncoder,
+    examples: Sequence[RoutingTrainingExample],
+    d_model: int,
+    batch_size: int,
+) -> dict:
+    from latticememory.rag.e8_retriever import E8LatticeDB
+
+    queries = [example.query for example in examples]
+    positives = [example.positive for example in examples]
+    query_embeddings = _encode_texts(encoder, queries, batch_size=batch_size)
+    positive_embeddings = _encode_texts(encoder, positives, batch_size=batch_size)
+    _check_dim(query_embeddings, d_model)
+    _check_dim(positive_embeddings, d_model)
+    lattice = E8LatticeDB(d_model=d_model)
+    distances = []
+    for query_embedding, positive_embedding in zip(query_embeddings, positive_embeddings):
+        query_key = lattice._quantize_to_indices(query_embedding)
+        positive_key = lattice._quantize_to_indices(positive_embedding)
+        distances.append(_hamming_distance(query_key, positive_key))
+    routed = sum(1 for distance in distances if distance <= 1)
+    return {
+        "min_hamming_distance": min(distances) if distances else 0,
+        "mean_hamming_distance": _mean([float(distance) for distance in distances]),
+        "lattice_route_rate": routed / len(distances) if distances else 0.0,
+    }
+
+
+def _mean(values: Sequence[float]) -> float:
+    return float(sum(values) / len(values)) if values else 0.0
+
+
+def _sts_metrics(predicted: Sequence[float], gold: Sequence[float]) -> dict:
+    if len(predicted) != len(gold):
+        raise ValueError("predicted and gold must have the same length")
+    if not predicted:
+        return {"pearson": 0.0, "spearman": 0.0, "mse": 0.0, "mean_cosine": 0.0}
+    pred = [float(value) for value in predicted]
+    target = [float(value) for value in gold]
+    mse = sum((p - g) ** 2 for p, g in zip(pred, target)) / len(pred)
+    return {
+        "pearson": round(_pearson(pred, target), 6),
+        "spearman": round(_pearson(_average_ranks(pred), _average_ranks(target)), 6),
+        "mse": round(float(mse), 6),
+        "mean_cosine": round(sum(pred) / len(pred), 6),
+    }
+
+
+def _pearson(left: Sequence[float], right: Sequence[float]) -> float:
+    n = len(left)
+    if n == 0:
+        return 0.0
+    left_mean = sum(left) / n
+    right_mean = sum(right) / n
+    numerator = sum((a - left_mean) * (b - right_mean) for a, b in zip(left, right))
+    left_var = sum((a - left_mean) ** 2 for a in left)
+    right_var = sum((b - right_mean) ** 2 for b in right)
+    denom = (left_var * right_var) ** 0.5
+    return float(numerator / denom) if denom else 0.0
+
+
+def _average_ranks(values: Sequence[float]) -> list[float]:
+    ordered = sorted(enumerate(values), key=lambda item: item[1])
+    ranks = [0.0 for _ in values]
+    i = 0
+    while i < len(ordered):
+        j = i + 1
+        while j < len(ordered) and ordered[j][1] == ordered[i][1]:
+            j += 1
+        avg_rank = (i + 1 + j) / 2.0
+        for k in range(i, j):
+            ranks[ordered[k][0]] = avg_rank
+        i = j
+    return ranks
+
+
 def _main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Train and evaluate LatticeMemory E8 routing on MS MARCO.")
+    parser.add_argument("--training-mode", choices=["adapter", "full_encoder"], default="adapter")
     parser.add_argument("--model", default="dfrokido/bge-large-e8-snap")
     parser.add_argument("--dataset-name", default="microsoft/ms_marco")
     parser.add_argument("--dataset-config", default="v1.1")
@@ -513,16 +1227,26 @@ def _main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--lr", type=float, default=1e-3)
-    parser.add_argument("--lambda-address", type=float, default=10.0)
+    parser.add_argument("--lambda-address", type=float, default=None)
     parser.add_argument("--lambda-neighborhood", type=float, default=0.5)
     parser.add_argument("--lambda-hard", type=float, default=1.0)
     parser.add_argument("--adapter-kind", choices=["linear", "residual_mlp"], default="residual_mlp")
     parser.add_argument("--adapter-hidden-multiplier", type=float, default=1.0)
+    parser.add_argument("--gradient-accumulation-steps", type=int, default=4)
+    parser.add_argument("--no-fp16", action="store_true")
+    parser.add_argument("--no-gradient-checkpointing", action="store_true")
+    parser.add_argument("--log-every-batches", type=int, default=0)
+    parser.add_argument("--sts-eval-each-epoch", action="store_true")
+    parser.add_argument("--sts-source", choices=["builtin", "hf"], default="builtin")
+    parser.add_argument("--sts-limit", type=int, default=64)
+    parser.add_argument("--sts-split", default="validation")
     parser.add_argument("--output-dir", required=True)
+    parser.add_argument("--checkpoint-every-epoch", action="store_true")
     parser.add_argument("--device", default="auto")
     args = parser.parse_args(argv)
 
     result = train_and_evaluate_msmarco(
+        training_mode=args.training_mode,
         model=args.model,
         dataset_name=args.dataset_name,
         dataset_config=args.dataset_config,
@@ -538,7 +1262,16 @@ def _main(argv: Sequence[str] | None = None) -> int:
         lambda_hard=args.lambda_hard,
         adapter_kind=args.adapter_kind,
         adapter_hidden_multiplier=args.adapter_hidden_multiplier,
+        gradient_accumulation_steps=args.gradient_accumulation_steps,
+        fp16=not args.no_fp16,
+        gradient_checkpointing=not args.no_gradient_checkpointing,
+        log_every_batches=args.log_every_batches,
+        sts_eval_each_epoch=args.sts_eval_each_epoch,
+        sts_source=args.sts_source,
+        sts_limit=args.sts_limit,
+        sts_split=args.sts_split,
         output_dir=args.output_dir,
+        checkpoint_every_epoch=args.checkpoint_every_epoch,
         device=args.device,
     )
     print(json.dumps(result, indent=2, sort_keys=True))
