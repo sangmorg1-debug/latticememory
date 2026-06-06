@@ -1,6 +1,9 @@
 """
 Phase 4 Flagship Product Demo: Cross-Model Semantic DNS
 
+WARNING: This demo is a simulation artifact using synthetic embeddings from a shared latent space.
+In production with real, distinct model families (e.g., MiniLM vs. BGE), cross-model E8 alignment fails to generalize.
+
 Demonstrates index migration (upgrading from Model A to Model B without re-indexing)
 by aligning two distinct embedding model spaces into a shared E8 lattice registry.
 """
@@ -29,7 +32,7 @@ def generate_simulated_concept_dataset(
     Generates a shared latent concept factor, then projects it into:
       - Model A space (384D) via projection matrix W_A
       - Model B space (512D) via projection matrix W_B
-    with slight random noise to simulate distinct encoder architectures.
+      - with slight random noise to simulate distinct encoder architectures.
     """
     torch.manual_seed(42)
     np.random.seed(42)
@@ -61,6 +64,9 @@ def main():
     print("=========================================================================")
     print("      LatticeMemory Phase 4: Cross-Model Semantic DNS Demo              ")
     print("=========================================================================")
+    print("WARNING: This demo is a simulation artifact using synthetic embeddings.")
+    print("In production with real distinct models, cross-model E8 mapping degrades.")
+    print("-------------------------------------------------------------------------")
     
     # Dimensions
     d_model_a = 384    # e.g., MiniLM (384D)

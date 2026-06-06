@@ -1,5 +1,8 @@
 """Example script demonstrating Multimodal Snapping Alignment using LatticeMemory.
 
+WARNING: This demo uses a simplified mock encoder (FakeEncoder) and represents a demo artifact.
+In production with real CLIP/text models, cross-modal alignment does not yield 100% key matching.
+
 CLIP-style models align text and images into the same neighborhood, but not
 the exact same coordinate. This script shows how to train a query-side adapter
 to project image embeddings onto the exact E8 addresses of their corresponding
@@ -18,6 +21,8 @@ from tests.test_lattice_index import FakeEncoder
 
 def run_demo():
     print("--- Phase 2: Multimodal Snapping Alignment Demo ---")
+    print("WARNING: This demo is a demo artifact using FakeEncoder and does not generalize")
+    print("to real-world CLIP multimodal models without significant alignment decay.")
     
     # 1. Initialize a deterministic mock encoder (384-dimensional)
     d_model = 384
