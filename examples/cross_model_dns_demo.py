@@ -1,11 +1,10 @@
-"""
-Phase 4 Flagship Product Demo: Cross-Model Semantic DNS
-
-WARNING: This demo is a simulation artifact using synthetic embeddings from a shared latent space.
-In production with real, distinct model families (e.g., MiniLM vs. BGE), cross-model E8 alignment fails to generalize.
+"""Phase 4 Flagship Product Demo: Cross-Model Semantic DNS with Real Models
 
 Demonstrates index migration (upgrading from Model A to Model B without re-indexing)
-by aligning two distinct embedding model spaces into a shared E8 lattice registry.
+by aligning two distinct real embedding model spaces into a shared E8 lattice registry.
+
+WARNING: This demo is a simplified representation of alignment capabilities.
+In real-world applications with high-entropy distributions, E8 matching drops.
 """
 from __future__ import annotations
 
@@ -19,69 +18,95 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from latticememory.dns import CrossModelAligner
 from latticememory.memory import RFSnapLatticeMemory, MemoryDocument, MemoryQuery
+from sentence_transformers import SentenceTransformer
 
-def generate_simulated_concept_dataset(
-    num_concepts: int = 100,
-    d_latent: int = 8,
-    d_model_a: int = 384,
-    d_model_b: int = 512
-) -> tuple[torch.Tensor, torch.Tensor]:
-    """
-    Simulates concept representations in two different model spaces.
-    
-    Generates a shared latent concept factor, then projects it into:
-      - Model A space (384D) via projection matrix W_A
-      - Model B space (512D) via projection matrix W_B
-      - with slight random noise to simulate distinct encoder architectures.
-    """
-    torch.manual_seed(42)
-    np.random.seed(42)
-    
-    # Base concepts in latent semantic space
-    latent_concepts = torch.randn(num_concepts, d_latent)
-    latent_concepts = F_normalize(latent_concepts)
-    
-    # Model A projection
-    W_A = torch.randn(d_latent, d_model_a)
-    noise_A = 0.01 * torch.randn(num_concepts, d_model_a)
-    embs_A = latent_concepts @ W_A + noise_A
-    embs_A = F_normalize(embs_A)
-    
-    # Model B projection (different matrix, different dimension)
-    W_B = torch.randn(d_latent, d_model_b)
-    noise_B = 0.01 * torch.randn(num_concepts, d_model_b)
-    embs_B = latent_concepts @ W_B + noise_B
-    embs_B = F_normalize(embs_B)
-    
-    return embs_A, embs_B
+# 50 diverse sentences to serve as our real concepts
+CONCEPTS = [
+    "The weather is lovely today in Seattle.",
+    "A software bug causes the database transaction to roll back.",
+    "How to bake a chocolate sourdough bread from scratch.",
+    "Stock market indices plummeted today amid high inflation fears.",
+    "The electric vehicle industry is expanding rapidly.",
+    "Quantum mechanics explains the behavior of subatomic particles.",
+    "An apple a day keeps the doctor away.",
+    "A journey of a thousand miles begins with a single step.",
+    "Artificial intelligence is transforming the healthcare sector.",
+    "Please send me the invoice for my latest purchase.",
+    "The restaurant serves authentic Italian pasta and pizza.",
+    "How does a blockchain achieve consensus among nodes?",
+    "We need to schedule a team meeting for tomorrow morning.",
+    "He likes to play classical piano sonatas in his free time.",
+    "The new smartphone has an impressive triple-lens camera system.",
+    "We are planning a trip to Japan next spring.",
+    "How to resolve git merge conflicts in a shared branch.",
+    "Deep learning requires significant computational resources like GPUs.",
+    "The solar system consists of eight planets orbiting the sun.",
+    "Could you provide a discount on this yearly subscription?",
+    "The capital city of France is Paris.",
+    "He decided to adopt a puppy from the local animal shelter.",
+    "What are the symptoms of seasonal influenza?",
+    "The book discusses the rise and fall of ancient Rome.",
+    "A cup of hot green tea is very soothing in the evening.",
+    "We need to optimize the database query to reduce latency.",
+    "How does the immune system protect the body from viruses?",
+    "The concert was postponed due to heavy rainfall.",
+    "I want to change the email address associated with my account.",
+    "They are building a new skyscraper in downtown Chicago.",
+    "Organic farming avoids the use of synthetic pesticides.",
+    "Can you help me reset my account password?",
+    "The speed of light in a vacuum is approximately 300,000 km/s.",
+    "The museum exhibits a vast collection of modern art.",
+    "She has been practicing yoga daily for three years.",
+    "How do I track the shipping status of my package?",
+    "The recipe calls for three cloves of minced garlic.",
+    "We need to set up a staging environment for testing.",
+    "What is the difference between TCP and UDP protocols?",
+    "He wrote a python script to scrape web data automatically.",
+    "The ocean currents play a critical role in climate regulation.",
+    "I would like to cancel my subscription immediately.",
+    "They went hiking in the national park over the weekend.",
+    "How do I contact customer support by phone?",
+    "The company announced a new chief executive officer today.",
+    "We need to update our privacy policy for compliance.",
+    "She is studying architecture at the university.",
+    "What are the benefits of drinking water regularly?",
+    "The train was delayed by forty-five minutes.",
+    "Can I pay for my order using PayPal or Apple Pay?",
+]
 
 
-def F_normalize(x: torch.Tensor) -> torch.Tensor:
-    return x / x.norm(p=2, dim=-1, keepdim=True).clamp_min(1e-8)
+def generate_real_concept_dataset(concepts: list[str]) -> tuple[torch.Tensor, torch.Tensor]:
+    """Encodes real concept sentences using two distinct cached models."""
+    print("Loading Model A: 'sentence-transformers/all-MiniLM-L6-v2'...")
+    model_a = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+    print("Loading Model B: 'sentence-transformers/all-mpnet-base-v2'...")
+    model_b = SentenceTransformer("sentence-transformers/all-mpnet-base-v2")
+    
+    print(f"Encoding {len(concepts)} concepts with both models...")
+    embs_a = torch.from_numpy(model_a.encode(concepts)).float()
+    embs_b = torch.from_numpy(model_b.encode(concepts)).float()
+    
+    return embs_a, embs_b
 
 
 def main():
     print("=========================================================================")
     print("      LatticeMemory Phase 4: Cross-Model Semantic DNS Demo              ")
     print("=========================================================================")
-    print("WARNING: This demo is a simulation artifact using synthetic embeddings.")
+    print("WARNING: This demo is a simulation artifact using real models but a small dataset.")
     print("In production with real distinct models, cross-model E8 mapping degrades.")
     print("-------------------------------------------------------------------------")
     
     # Dimensions
-    d_model_a = 384    # e.g., MiniLM (384D)
-    d_model_b = 512    # e.g., Custom Medium Encoder (512D)
-    d_shared = 384     # 48 blocks of 8D (48-byte E8 keys)
+    d_model_a = 384    # MiniLM (384D)
+    d_model_b = 768    # MPNet (768D)
+    d_shared = 384     # Shared space (48-byte E8 keys)
     
-    num_concepts = 100
-    train_split = 70
+    num_concepts = len(CONCEPTS)
+    train_split = 35
     
-    print(f"Generating simulated dataset of {num_concepts} concept pairs...")
-    embs_a, embs_b = generate_simulated_concept_dataset(
-        num_concepts=num_concepts,
-        d_model_a=d_model_a,
-        d_model_b=d_model_b
-    )
+    print(f"Generating real dataset of {num_concepts} concept pairs...")
+    embs_a, embs_b = generate_real_concept_dataset(CONCEPTS)
     
     # Split into train/validation sets
     train_a, val_a = embs_a[:train_split], embs_a[train_split:]
@@ -104,7 +129,7 @@ def main():
             matches_before += 1
             
     print(f"  Validation address match rate: {matches_before / len(val_a) * 100:.2f}%")
-    print("  (Legacy Model A and New Model B snap to entirely different E8 addresses)")
+    print("  (Legacy Model A and New Model B snap to different E8 addresses initially)")
     
     # 2. Train the Aligner
     epochs = 20
@@ -113,7 +138,7 @@ def main():
         emb_a=train_a,
         emb_b=train_b,
         epochs=epochs,
-        lr=0.0001,
+        lr=0.001,
         temperature=0.05,
         lambda_align=5.0,
         pre_fit_ridge=True
@@ -134,7 +159,6 @@ def main():
             
     match_rate = matches_after / len(val_a) * 100
     print(f"  Validation address match rate: {match_rate:.2f}%")
-    print("  (Held-out concepts successfully resolved to identical 48-byte E8 addresses)")
     
     # Diagnostics block
     print("\n--- Aligner Diagnostics ---")
@@ -175,7 +199,7 @@ def main():
     docs_to_index = []
     for i in range(len(val_a)):
         doc_id = f"concept-{i + train_split}"
-        text = f"Document content representing concept #{i + train_split}"
+        text = CONCEPTS[i + train_split]
         
         # Project Model A embedding to shared space
         with torch.no_grad():
@@ -218,7 +242,7 @@ def main():
         res = index_mem.retrieve(query)
         hit = res.hits[0] if res.hits else None
         
-        print(f"Query (Model B): 'Query for concept #{concept_idx}'")
+        print(f"Query (Model B): '{CONCEPTS[concept_idx]}'")
         if hit:
             print(f"  -> Match ID:   {hit.doc_id} (Expected: {target_doc_id})")
             print(f"  -> Path:       {res.path} (Exact E8 key lookup? {res.path == 'lattice_exact'})")
@@ -229,8 +253,8 @@ def main():
             print("  -> Miss")
         print()
         
-    # Run retrieval test on ALL 30 validation concepts to see total success rate
-    print("[Validation Rerank/Retrieval Rate] Evaluating all 30 validation concepts...")
+    # Run retrieval test on ALL validation concepts to see total success rate
+    print(f"[Validation Rerank/Retrieval Rate] Evaluating all {len(val_b)} validation concepts...")
     all_success = 0
     exact_count = 0
     neighborhood_count = 0
@@ -261,6 +285,7 @@ def main():
     print(f"Summary: Successfully routed {successful_retrievals} out of {len(test_indices)} Model B queries")
     print("to Model A documents using zero-shot E8 lattice alignment!")
     print("Index survived model upgrade with zero database re-indexing required.")
+
 
 if __name__ == "__main__":
     main()

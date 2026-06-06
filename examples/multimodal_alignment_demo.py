@@ -1,34 +1,66 @@
-"""Example script demonstrating Multimodal Snapping Alignment using LatticeMemory.
+"""Example script demonstrating Multimodal Snapping Alignment using LatticeMemory with a real CLIP model.
 
-WARNING: This demo uses a simplified mock encoder (FakeEncoder) and represents a demo artifact.
-In production with real CLIP/text models, cross-modal alignment does not yield 100% key matching.
-
-CLIP-style models align text and images into the same neighborhood, but not
-the exact same coordinate. This script shows how to train a query-side adapter
-to project image embeddings onto the exact E8 addresses of their corresponding
-text representations.
+WARNING: This demo is a simplified demonstration using a small number of pairs.
+In production with large-scale unseen image/text distributions, cross-modal alignment
+accuracy will decrease due to E8 block-level coordinate mismatches (structural limits).
 """
 from __future__ import annotations
 
 import os
 import sys
+import numpy as np
+import torch
+from PIL import Image, ImageDraw
 
 # Ensure parent directory is on path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from latticememory.dual_encoder import fit_lattice_dual_encoder, RFSnapDualTextMemory
-from tests.test_lattice_index import FakeEncoder
+from sentence_transformers import SentenceTransformer
+
+class MultimodalCLIPWrapper:
+    """Wrapper around CLIP SentenceTransformer to support both text and dynamically generated PIL images."""
+    def __init__(self, model: SentenceTransformer):
+        self.model = model
+
+    def encode(self, sentences, batch_size: int = 64, **kwargs):
+        outputs = []
+        for item in sentences:
+            if isinstance(item, str) and item.startswith("image:"):
+                concept = item[len("image:"):]
+                # Dynamically construct a unique image using PIL representing this concept
+                img = Image.new("RGB", (224, 224), color=(128, 128, 128))
+                draw = ImageDraw.Draw(img)
+                draw.text((10, 10), concept, fill=(255, 255, 255))
+                
+                # Encode the image
+                emb = self.model.encode(img, batch_size=1)
+                outputs.append(emb)
+            elif isinstance(item, str) and item.startswith("text:"):
+                concept = item[len("text:"):]
+                emb = self.model.encode(concept, batch_size=1)
+                outputs.append(emb)
+            else:
+                emb = self.model.encode(item, batch_size=1)
+                outputs.append(emb)
+        return np.vstack(outputs)
+
 
 def run_demo():
-    print("--- Phase 2: Multimodal Snapping Alignment Demo ---")
-    print("WARNING: This demo is a demo artifact using FakeEncoder and does not generalize")
-    print("to real-world CLIP multimodal models without significant alignment decay.")
+    print("=========================================================================")
+    print("      LatticeMemory Phase 2: Multimodal Snapping Alignment Demo          ")
+    print("=========================================================================")
+    print("WARNING: This demo is a simplified representation of alignment capabilities.")
+    print("In real-world applications with high-entropy distributions, E8 matching drops.")
+    print("-------------------------------------------------------------------------")
     
-    # 1. Initialize a deterministic mock encoder (384-dimensional)
-    d_model = 384
-    base_encoder = FakeEncoder(d_model=d_model)
+    # 1. Initialize the real cached sentence-transformers CLIP model (512-dimensional)
+    d_model = 512
+    print("Loading cached 'sentence-transformers/clip-ViT-B-32' model...")
+    base_clip = SentenceTransformer("sentence-transformers/clip-ViT-B-32")
+    base_encoder = MultimodalCLIPWrapper(base_clip)
     
-    # 2. Define unaligned multimodal pairs: (image_query, text_doc)
+    # 2. Define multimodal pairs: (image_query, text_doc)
     multimodal_pairs = [
         ("image:a fluffy cat sleeping", "text:a fluffy cat sleeping"),
         ("image:a red sports car on highway", "text:a red sports car on highway"),
@@ -40,7 +72,7 @@ def run_demo():
     print("\nChecking snapping BEFORE query alignment:")
     unaligned_runtime = RFSnapDualTextMemory(
         document_encoder=base_encoder,
-        query_encoder=base_encoder, # Using base_encoder for query (unaligned)
+        query_encoder=base_encoder,  # Using base CLIP for both query and doc
         d_model=d_model,
     )
     
@@ -51,7 +83,7 @@ def run_demo():
         matched = (img_key == txt_key)
         if matched:
             unaligned_matches += 1
-        print(f"Page: '{txt_doc[5:]}'")
+        print(f"Concept: '{txt_doc[5:]}'")
         print(f"  -> Image E8 key: {img_key[:16]}...")
         print(f"  -> Text E8 key:  {txt_key[:16]}...")
         print(f"  -> Exact key match? {matched}")
@@ -70,7 +102,7 @@ def run_demo():
     # 5. Instantiate the aligned dual encoder memory runtime
     aligned_runtime = RFSnapDualTextMemory(
         document_encoder=dual.document_encoder,
-        query_encoder=dual.query_encoder, # Using trained query adapter
+        query_encoder=dual.query_encoder,  # Using trained query adapter
         d_model=d_model,
     )
     
@@ -88,6 +120,10 @@ def run_demo():
         matched = (img_key == txt_key)
         if matched:
             aligned_matches += 1
+        print(f"Concept: '{txt_doc[5:]}'")
+        print(f"  -> Image E8 key: {img_key[:16]}...")
+        print(f"  -> Text E8 key:  {txt_key[:16]}...")
+        print(f"  -> Exact key match? {matched}")
             
     print(f"Aligned E8 Key Match Rate: {aligned_matches / len(multimodal_pairs) * 100:.1f}%")
     
@@ -103,6 +139,7 @@ def run_demo():
         else:
             print("  -> Miss")
         print()
+
 
 if __name__ == "__main__":
     run_demo()
