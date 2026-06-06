@@ -1,35 +1,49 @@
 # LatticeMemory
 
-**10.7× smaller E8 key representation. Hybrid retrieval for full semantic search. Every concept has a model-specific address.**
+**Semantic cache, dedup, and hybrid memory — 10.7× compressed E8 keys for instant repeat-query hits, dense fallback for novel retrieval.**
 
-LatticeMemory uses the [E8 lattice](https://en.wikipedia.org/wiki/E8_lattice) — the densest mathematical sphere packing in 8 dimensions — as a model-specific address space for meaning. Every text embedding snaps to its nearest E8 coordinate: a deterministic address (128-byte hash key for 1024-dim; 10.7× smaller than float32 when address + scale bytes are counted together) that enables O(1) retrieval for symmetric cache, deduplication, and near-duplicate workloads.
+LatticeMemory uses the [E8 lattice](https://en.wikipedia.org/wiki/E8_lattice) — the densest sphere packing in 8 dimensions — as a deterministic address space for text embeddings. Every 1024-dim embedding snaps to a 128-byte E8 key. Identical or near-identical text lands on the same key; novel queries fall through to a dense float32/Int8 fallback.
 
-[**Live Demo ->**](https://huggingface.co/spaces/dfrokido/LatticeMemory) | [**Model ->**](https://huggingface.co/dfrokido/bge-large-e8-snap) | [**GitHub ->**](https://github.com/sangmorg1-debug/e8-Project)
+[**Live Demo →**](https://huggingface.co/spaces/dfrokido/LatticeMemory) | [**Model →**](https://huggingface.co/dfrokido/bge-large-e8-snap) | [**GitHub →**](https://github.com/sangmorg1-debug/e8-Project)
+
+---
+
+## What it's for
+
+| Workload | E8 path | Fallback needed? |
+| --- | --- | --- |
+| Repeat / paraphrase LLM queries (cache) | ✅ O(1) exact or Hamming-1 hit | No |
+| Semantic deduplication, near-duplicate detection | ✅ Key collision = duplicate | No |
+| Dataset quality filtering, semantic sharding | ✅ Stable cluster addresses | No |
+| IoT/command normalization (symmetric vocab) | ✅ Fixed command set → fixed keys | No |
+| **Asymmetric QA/passage search (RAG)** | ❌ Query ≠ passage in E8 space | **Yes — Int8 or float32 required** |
+
+E8 keys route fast for content that is semantically identical or near-identical. They are not a replacement for vector search on asymmetric workloads where the query text and the correct passage are structurally different (e.g. MS MARCO: question vs. answer paragraph).
 
 ---
 
 ## Benchmarks
 
-**E8 key compression (bge-large 1024-dim):**
+**Compression (bge-large 1024-dim):**
 
-| Method | Compression | Index / 1M docs | Retrieval p50 @ 100K docs | Recall@10 |
-|---|---:|---:|---:|---:|
-| Float32 | 1× | 4.1 GB | 20.8 ms | 100% |
-| **LatticeMemory E8 keys** | **10.7×** | **0.38 GB** | path-dependent | key-only workloads |
+| Method | Compression | Index / 1M docs | Retrieval p50 @ 100K docs |
+|---|---:|---:|---:|
+| Float32 | 1× | 4.1 GB | 20.8 ms |
+| **LatticeMemory E8 keys** | **10.7×** | **0.38 GB** | O(1) on key hit |
 
-**Fallback compression benchmark** (`dfrokido/bge-large-e8-snap`, 1K docs, 100 paraphrase queries, Recall@10/top-k overlap vs float32 fallback):
+**Fallback quality (1K docs, 100 paraphrase queries, recall vs float32):**
 
-| Fallback | Compression vs float32 fallback | Recall@10 overlap | Top-1 agreement | Search p50 |
+| Fallback | Compression vs float32 | Recall@10 overlap | Top-1 agreement | Search p50 |
 |---|---:|---:|---:|---:|
 | Float32 | 1× | 100.0% | 100.0% | 0.14 ms |
 | Int8 | 4× | 95.1% | 91.0% | 1.97 ms |
 | Int4 | 8× | 12.1% | 1.0% | 4.21 ms |
 
-- More compressed than int4 for E8 keys. Faster than float32 on exact-key cache hits. Dense or Int8 fallback is still required for asymmetric QA/passage search.
-- STS quality: **0.8714** (`bge-large-e8-snap`) vs 0.8637 float baseline (+0.0077)
-- End-to-end RAG: **82% answer agreement** with float32 at identical recall
+- **Int8 fallback** is the recommended fallback for RAG/QA — 4× smaller than float32, 95% recall parity.
+- **Int4 fallback** is retrieval-unsafe for QA. Use only for dedup/clustering where approximate grouping is acceptable.
+- **STS quality:** `bge-large-e8-snap` scores 0.8714 vs 0.8637 float baseline (+0.0077).
 
-> **Compression basis:** The 10.7× figure is the E8 key-representation ratio — 1 address byte + 2 scale bytes per 8-dim block = 384 bytes for 1024-dim vs 4,096 bytes for float32. The stated ratio is achieved in key-only mode (exact + Hamming-1 retrieval only, cosine fallback disabled), which is suitable for symmetric workloads (semantic cache, agent episodic memory, duplicate detection, IoT commands). For asymmetric QA/passage search like MS MARCO, the current implementation must use hybrid mode: E8 keys first, then dense cosine fallback on lattice miss. Int8 fallback is implemented and measured; Int4 fallback is implemented but not retrieval-quality-safe for QA based on the benchmark above.
+> **Compression basis:** 1 address byte + 2 scale bytes per 8-dim block = 384 bytes for 1024-dim vs 4,096 bytes float32 = 10.7×. Ratio applies to E8 key storage only. Hybrid mode (key + fallback index) stores both representations; the E8 layer acts as a fast-path cache in front of the dense index.
 
 ---
 
@@ -39,39 +53,57 @@ LatticeMemory uses the [E8 lattice](https://en.wikipedia.org/wiki/E8_lattice) �
 pip install latticememory
 ```
 
+---
+
 ## Quickstart
 
-```bash
-pip install latticememory
-```
+### Semantic cache (the primary use case)
 
 ```python
 from latticememory import LatticeIndex
 
-# Build a 10.7× compressed semantic index
 index = LatticeIndex()  # downloads dfrokido/bge-large-e8-snap on first run (~500MB)
 
-# Index your documents
 index.add([
-    "Paris is the capital of France.",
-    "The Eiffel Tower stands 330 metres tall.",
-    "London is the capital of the United Kingdom.",
+    "What is the refund policy?",
+    "How do I reset my password?",
+    "Where is my order?",
 ])
 
-# Search with exact text — guaranteed O(1) lattice_exact hit
-results = index.search("Paris is the capital of France.", top_k=2)
-print(results[0].text)           # Paris is the capital of France.
-print(results[0].retrieval_path) # lattice_exact  ← same text, O(1) hash lookup
+# Exact text → guaranteed O(1) lattice_exact hit
+result = index.search("What is the refund policy?", top_k=1)
+print(result[0].retrieval_path)  # lattice_exact
 
-# Semantic search (similar but not identical text) uses lattice neighborhood
-results2 = index.search("capital of France", top_k=2)
-print(results2[0].text)           # Paris is the capital of France.
+# Near-paraphrase → lattice_exact or Hamming-1 hit (same E8 neighborhood)
+result2 = index.search("What's your return policy?", top_k=1)
+print(result2[0].retrieval_path)  # lattice_exact or lattice_hamming1
 
 print(index.stats())
-# LatticeStats(... compression_mode='e8_key_only', e8_key_bytes=432, ...)
 ```
 
-### LLM Semantic Cache (LangChain)
+### Hybrid RAG / document search
+
+For asymmetric search (user questions against document passages), use hybrid mode — E8 for cache hits, dense fallback for novel queries:
+
+```python
+from latticememory import LatticeIndex
+
+index = LatticeIndex(mode="hybrid")  # Int8 fallback enabled automatically
+index.add([
+    "The refund window is 30 days from purchase date.",
+    "Password resets are sent to your registered email.",
+    "Orders ship within 2 business days.",
+])
+
+# Novel query → routes through E8, misses, falls back to Int8 dense search
+result = index.search("Can I return something after a month?", top_k=1)
+print(result[0].retrieval_path)  # fallback (float32 or Int8)
+print(result[0].text)            # The refund window is 30 days...
+```
+
+---
+
+## LLM Semantic Cache (LangChain)
 
 ```bash
 pip install latticememory langchain-core langchain-openai
@@ -82,57 +114,55 @@ from langchain_openai import ChatOpenAI
 from langchain_core.globals import set_llm_cache
 from latticememory.integrations.langchain import LatticeMemoryCache
 
-set_llm_cache(LatticeMemoryCache())   # one line
+set_llm_cache(LatticeMemoryCache())
 llm = ChatOpenAI(model="gpt-4o")
 
 llm.invoke("What is the capital of France?")   # miss — calls API (~800ms)
-llm.invoke("Which city is France's capital?")  # hit  — 0.002ms, no API call
+llm.invoke("What is the capital of France?")   # hit  — O(1) exact key match, no API call
+llm.invoke("Which city is France's capital?")  # likely hit — same E8 neighborhood
 ```
 
-Semantically equivalent prompts hit the same cache entry. No cosine threshold to tune.
+Repeated and near-identical prompts hit the same cache entry. Cache hit rate depends on query similarity — symmetric caches (same users, same queries) see near-100% repeat-hit rates. Novel queries miss and fall through to the LLM as normal.
 
 ---
 
 ## How It Works
 
-Standard embedding models output float32 vectors — 4 bytes per dimension. LatticeMemory snaps each 8-dimensional block to its nearest point in the E8 lattice Shell 1 (240 possible addresses). The result:
-
-- **1 byte per block** (E8 address) + **2 bytes per block** (scale) = **3 bytes per 8 dimensions**
-- vs. **32 bytes per 8 dimensions** for float32 — **10.7× compression**
-- The E8 address is a **hash key** — exact lookup is O(1), independent of corpus size
-- Hamming-1 beam extends to near-duplicate queries with no quality loss
-
-```
+```text
 float32 embedding [1024-dim]
-  -> 128 blocks of 8 floats
-  -> each block -> nearest E8 point (1-byte address + 2-byte scale)
-  -> 128-byte key stored in hash table
-  -> query -> same key -> O(1) exact lookup
+  → 128 blocks of 8 floats
+  → each block → nearest E8 Shell-1 point (240 possible addresses)
+  → 1-byte address + 2-byte scale per block = 384-byte key
+  → key stored in hash table
+
+query → same key → O(1) lattice_exact lookup
+query → Hamming-1 neighbor → O(1) lattice_hamming1 lookup
+query → no neighbor found → dense fallback (Int8 or float32 ANN)
 ```
+
+The E8 key is a **deterministic hash of meaning** — not an approximation. Two texts that are semantically identical land on the same key every time, without cosine threshold tuning.
 
 ---
 
-## Domain Adapters
-
-For structured domain knowledge (FAQ, product docs, support guides), a residual MLP adapter trained on labeled (query, document) pairs achieves **100% lattice path** at 50-doc scale — every query routes to the exact correct E8 address with no vector scan.
+## Deduplication
 
 ```python
-from latticememory import RFSnapDualTextMemory, fit_lattice_dual_encoder
+from latticememory import LatticeIndex
 
-dual = fit_lattice_dual_encoder(
-    base_encoder=encoder,
-    pairs=[("refund policy query", "refund policy document"), ...],
-    d_model=1024,
-)
+index = LatticeIndex()
 
-runtime = RFSnapDualTextMemory(
-    document_encoder=dual.document_encoder,
-    query_encoder=dual.query_encoder,
-    d_model=1024,
-)
-runtime.add_texts(["refund policy document"])
-result = runtime.retrieve_text("refund policy query", top_k=1)
-print(result.path)   # lattice_exact -- O(1), no vector scan
+docs = [
+    "The quick brown fox jumps over the lazy dog.",
+    "A fast brown fox leaped over a sleeping dog.",   # near-duplicate
+    "Machine learning is a branch of artificial intelligence.",
+]
+
+for doc in docs:
+    result = index.search(doc, top_k=1)
+    if result and result[0].retrieval_path in ("lattice_exact", "lattice_hamming1"):
+        print(f"DUPLICATE: {doc[:50]}...")
+    else:
+        index.add([doc])
 ```
 
 ---
@@ -151,15 +181,9 @@ REST API with embedding, text, cache, and observability endpoints. Built-in dash
 
 ---
 
-## The Vision
-
-The deeper thesis: every concept now has a permanent, deterministic address. Knowledge that outlives any single model. AI memory you own, can export, can share. The semantic layer of the internet — built on math that has existed for 50 years.
-
----
-
 ## Design Partners
 
-We're looking for 3 enterprises with a 50-500 doc knowledge base to work with us for free. If you're building a RAG system and paying for a vector database — reach out.
+We're looking for 3 teams with high-repetition LLM workloads (support bots, document QA, internal search) to pilot semantic cache + dedup at no cost.
 
 **[dfrokido@gmail.com](mailto:dfrokido@gmail.com)**
 

@@ -38,7 +38,22 @@ class LatticeStats:
     total_compression_vs_float32: float | None = None
 
 
+_VALID_MODES = frozenset({"cache", "hybrid"})
+
+
 class LatticeIndex:
+    """Semantic index with E8 lattice routing and optional dense fallback.
+
+    mode="cache"  (default): optimised for repeat/paraphrase cache hits and
+        deduplication.  E8 exact + Hamming-1 paths only.  Suitable for
+        symmetric workloads where query text ≈ indexed text.
+
+    mode="hybrid": E8 paths first, mandatory Int8 dense fallback for novel
+        queries.  Required for asymmetric RAG/search where queries and
+        documents are structurally different (e.g. question vs. passage).
+        Defaults fallback_quantization=8 (Int8) unless overridden.
+    """
+
     def __init__(
         self,
         model: str = DEFAULT_MODEL,
@@ -46,7 +61,12 @@ class LatticeIndex:
         batch_size: int = 64,
         beam_radius: int = 1,
         fallback_quantization: int | None = None,
+        mode: str = "cache",
     ):
+        if mode not in _VALID_MODES:
+            raise ValueError(f"mode must be one of {sorted(_VALID_MODES)}, got {mode!r}")
+        if mode == "hybrid" and fallback_quantization is None:
+            fallback_quantization = 8  # Int8 — 4× smaller than float32, 95% recall parity
         from sentence_transformers import SentenceTransformer
         if device == "auto":
             import torch
@@ -57,6 +77,7 @@ class LatticeIndex:
             import numpy as np
             probe = encoder.encode(["dimension probe"])
             d_model = int(np.asarray(probe).shape[-1])
+        self._mode = mode
         self._init_with_encoder(
             encoder,
             d_model=d_model,
@@ -127,7 +148,11 @@ class LatticeIndex:
         
         key_only_compression = (float32_bytes / e8_key_bytes) if e8_key_bytes > 0 else 0.0
         total_compression = (float32_bytes / total_bytes) if total_bytes > 0 else 0.0
-        compression_mode = "hybrid_quantized_fallback" if fallback_quantization is not None else "e8_key_only"
+        compression_mode = (
+            "hybrid_int8_fallback" if fallback_quantization == 8
+            else "hybrid_quantized_fallback" if fallback_quantization is not None
+            else "e8_key_only"
+        )
         compression = total_compression if fallback_quantization is not None else key_only_compression
         exact_hit_rate = (self._exact_hits / self._total_queries if self._total_queries > 0 else None)
         return LatticeStats(

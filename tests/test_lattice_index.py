@@ -120,7 +120,7 @@ def test_stats_exposes_key_fallback_and_total_bytes():
     assert stats.total_index_bytes == stats.e8_key_bytes + stats.fallback_bytes
     assert stats.float32_embedding_bytes == 2 * 384 * 4
     assert stats.fallback_quantization == 8
-    assert stats.compression_mode == "hybrid_quantized_fallback"
+    assert stats.compression_mode == "hybrid_int8_fallback"
 
 
 def test_init_with_encoder_stores_d_model():
