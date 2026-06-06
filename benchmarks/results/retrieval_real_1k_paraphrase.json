@@ -1,0 +1,86 @@
+{
+  "benchmark": "retrieval",
+  "build_seconds": 5.629451899963897,
+  "d_model": 1024,
+  "docs_per_second_build": 177.63718702462194,
+  "index_stats": {
+    "compression_vs_float32": 10.7,
+    "docs": 1000,
+    "exact_hit_rate": 0.0,
+    "index_size_mb": 0.3662
+  },
+  "latency_ms": {
+    "p50": 295.1294000376947,
+    "p95": 317.63452502782457,
+    "p99": 328.7479899788744
+  },
+  "lookup_only_latency_ms": {
+    "p50": 9.037299983901903,
+    "p95": 11.194480009726247,
+    "p99": 14.665572996600533
+  },
+  "model": "dfrokido/bge-large-e8-snap",
+  "n_docs": 1000,
+  "n_queries": 100,
+  "path_counts": {
+    "fallback": 100
+  },
+  "per_path_latency_ms": {
+    "fallback": {
+      "count": 100,
+      "p50": 295.1294000376947,
+      "p95": 317.63452502782457,
+      "p99": 328.7479899788744
+    },
+    "lattice_exact": {
+      "count": 0,
+      "p50": 0.0,
+      "p95": 0.0,
+      "p99": 0.0
+    },
+    "lattice_hamming": {
+      "count": 0,
+      "p50": 0.0,
+      "p95": 0.0,
+      "p99": 0.0
+    },
+    "miss": {
+      "count": 0,
+      "p50": 0.0,
+      "p95": 0.0,
+      "p99": 0.0
+    }
+  },
+  "per_path_lookup_only_latency_ms": {
+    "fallback": {
+      "count": 100,
+      "p50": 9.037299983901903,
+      "p95": 11.194480009726247,
+      "p99": 14.665572996600533
+    },
+    "lattice_exact": {
+      "count": 0,
+      "p50": 0.0,
+      "p95": 0.0,
+      "p99": 0.0
+    },
+    "lattice_hamming": {
+      "count": 0,
+      "p50": 0.0,
+      "p95": 0.0,
+      "p99": 0.0
+    },
+    "miss": {
+      "count": 0,
+      "p50": 0.0,
+      "p95": 0.0,
+      "p99": 0.0
+    }
+  },
+  "queries_are_exact_document_copies": false,
+  "query_mode": "paraphrase",
+  "recall_at_k_vs_float32": 1.0,
+  "semantic_recall_requires_real_model": false,
+  "top1_agreement_vs_float32": 1.0,
+  "top_k": 10
+}

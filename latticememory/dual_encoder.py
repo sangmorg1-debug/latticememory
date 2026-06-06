@@ -394,6 +394,7 @@ def train_lattice_contrastive_encoder(
     lambda_synthetic_hard: float = 0.0,
     adapter_kind: str = "linear",
     adapter_hidden_multiplier: float = 2.0,
+    device: str | torch.device = "cpu",
 ) -> ContrastiveTrainResult:
     """Train a query-side linear adapter for discrete E8 routing.
 
@@ -425,6 +426,8 @@ def train_lattice_contrastive_encoder(
     if adapter_hidden_multiplier <= 0:
         raise ValueError("adapter_hidden_multiplier must be > 0")
 
+    train_device = torch.device(device)
+
     # Step 1: encode all texts upfront with the base encoder (not the adapter)
     query_embs = _encode_with(base_encoder, [q for q, _ in pairs], batch_size=encode_batch_size)  # [N, d_model]
     doc_embs = _encode_with(base_encoder, [d for _, d in pairs], batch_size=encode_batch_size)    # [N, d_model]
@@ -438,7 +441,7 @@ def train_lattice_contrastive_encoder(
         [list(tmp_db._quantize_to_indices(doc_emb)) for doc_emb in doc_embs],
         dtype=torch.long,
     )
-    codebook = tmp_db._codebook.float()
+    codebook = tmp_db._codebook.float().to(train_device)
 
     hard_doc_embs: torch.Tensor | None = None
     hard_negative_indices = [[] for _ in pairs]
@@ -466,6 +469,12 @@ def train_lattice_contrastive_encoder(
         radius=synthetic_hard_negative_radius,
     )
     synthetic_hard_negative_pairs = int(target_keys.shape[0] * synthetic_hard_negative_k)
+    query_embs = query_embs.to(train_device)
+    doc_embs = doc_embs.to(train_device)
+    target_keys = target_keys.to(train_device)
+    synthetic_negative_keys = synthetic_negative_keys.to(train_device)
+    if hard_doc_embs is not None:
+        hard_doc_embs = hard_doc_embs.to(train_device)
 
     # Step 2: initialize adapter near identity
     torch.manual_seed(seed)
@@ -474,6 +483,7 @@ def train_lattice_contrastive_encoder(
         d_model=d_model,
         hidden_multiplier=adapter_hidden_multiplier,
     )
+    adapter = adapter.to(train_device)
 
     # Step 3: AdamW optimizer
     optimizer = torch.optim.AdamW(adapter.parameters(), lr=lr, weight_decay=weight_decay)
@@ -754,10 +764,10 @@ def _hard_negative_loss(
         return adapted_queries.sum() * 0.0
 
     owner_tensor = torch.tensor(owner_positions, dtype=torch.long, device=adapted_queries.device)
-    negative_tensor = torch.tensor(selected_negative_indices, dtype=torch.long)
+    negative_tensor = torch.tensor(selected_negative_indices, dtype=torch.long, device=adapted_queries.device)
     query_vecs = F.normalize(adapted_queries[owner_tensor], dim=-1)
     positive_vecs = F.normalize(positive_docs.to(adapted_queries.device)[owner_tensor], dim=-1)
-    negative_vecs = F.normalize(hard_doc_embs[negative_tensor].to(adapted_queries.device), dim=-1)
+    negative_vecs = F.normalize(hard_doc_embs.to(adapted_queries.device)[negative_tensor], dim=-1)
     positive_scores = (query_vecs * positive_vecs).sum(dim=-1)
     negative_scores = (query_vecs * negative_vecs).sum(dim=-1)
     return F.softplus((negative_scores - positive_scores) / temperature).mean()

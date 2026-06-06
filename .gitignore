@@ -10,3 +10,6 @@ build/
 venv/
 .pytest_cache/
 *.db
+rust/target/
+node_modules/
+.DS_Store

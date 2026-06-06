@@ -1,0 +1,18 @@
+{
+  "benchmark": "dedup",
+  "bruteforce_docs_per_second": 669.4613778100049,
+  "bruteforce_documents_measured": 2000,
+  "bruteforce_duplicate_pairs": 300,
+  "bruteforce_elapsed_seconds": 2.9874763000407256,
+  "bruteforce_pairwise_comparisons": 1999000,
+  "d_model": 384,
+  "dedup_rate": 0.15,
+  "duplicate_count": 300,
+  "e8_docs_per_second": 1243.913995259357,
+  "e8_elapsed_seconds": 1.6078282000380568,
+  "model": "synthetic",
+  "n_docs": 2000,
+  "speedup_docs_measured": 2000,
+  "speedup_vs_bruteforce": 1.9469458742607757,
+  "unique_count": 1700
+}

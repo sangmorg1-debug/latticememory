@@ -182,6 +182,7 @@ class RFSnapLatticeMemory:
         observability: LatticeObservability | None = None,
         beam_radius: int = 1,
         beam_key_scan_max_documents: int = 4096,
+        sqlite_path: str | Path | None = None,
     ):
         self.d_model = d_model
         self.lattice = E8LatticeDB(d_model=d_model)
@@ -207,6 +208,65 @@ class RFSnapLatticeMemory:
         self._doc_index: dict[str, int] = {}
         self._ann_embeddings: torch.Tensor | None = None
         self._last_query_vector: torch.Tensor | None = None
+
+        self.sqlite_store = None
+        if sqlite_path is not None:
+            from latticememory.sqlite_store import LatticeSqliteStore
+            self.sqlite_store = LatticeSqliteStore(sqlite_path)
+            if self.sqlite_store.count() > 0:
+                self._load_from_store()
+
+    def _load_from_store(self) -> None:
+        if self.sqlite_store is None:
+            return
+        import json
+        import numpy as np
+        rows = self.sqlite_store.get_all_rows()
+        new_ann_embeddings: list[torch.Tensor] = []
+        for row in rows:
+            doc_id = row["doc_id"]
+            text = row["text"]
+            lattice_key = row["lattice_key"]
+            metadata = json.loads(row["metadata"])
+            
+            vector = torch.from_numpy(np.frombuffer(row["embedding"], dtype=np.float32).copy()).to(self.lattice.device)
+            
+            self.lattice.hash_store[lattice_key].append(doc_id)
+            self.lattice._embeddings[doc_id] = F.normalize(vector, p=2, dim=0)
+            self.lattice._metadata[doc_id] = metadata
+            self.lattice._keys[doc_id] = lattice_key
+            
+            ann_vector = F.normalize(vector, p=2, dim=0).detach().cpu()
+            self._texts[doc_id] = text
+            self._metadata[doc_id] = metadata
+            self._doc_index[doc_id] = len(self._doc_ids)
+            self._doc_ids.append(doc_id)
+            self._doc_id_set.add(doc_id)
+            new_ann_embeddings.append(ann_vector)
+            
+        if new_ann_embeddings:
+            self._ann_embeddings = torch.stack(new_ann_embeddings)
+
+    def lattice_key_for(self, embedding: torch.Tensor | Iterable[float]) -> bytes:
+        """Compute the quantized E8 lattice key for the given embedding."""
+        vector = self.lattice._as_vector(embedding)
+        return self.lattice._quantize_to_indices(vector)
+
+    def get_document_ids_by_lattice_key(self, lattice_key: bytes) -> list[str]:
+        """Retrieve the document IDs mapped to this E8 lattice key."""
+        return list(self.lattice.hash_store.get(lattice_key, []))
+
+    def get_document_text(self, doc_id: str) -> str | None:
+        """Retrieve the text associated with a document ID."""
+        return self._texts.get(doc_id)
+
+    def get_document_metadata(self, doc_id: str) -> dict | None:
+        """Retrieve the metadata associated with a document ID."""
+        return self._metadata.get(doc_id)
+
+    def get_document_lattice_key(self, doc_id: str) -> bytes | None:
+        """Retrieve the E8 lattice key associated with a document ID."""
+        return self.lattice._keys.get(doc_id)
 
     @property
     def num_documents(self) -> int:
@@ -254,6 +314,9 @@ class RFSnapLatticeMemory:
             )
         if self.fallback is not None:
             self.fallback.add_documents(docs)
+        if self.sqlite_store is not None:
+            lattice_keys = {doc.doc_id: self.lattice._keys[doc.doc_id] for doc in docs}
+            self.sqlite_store.add_documents(docs, lattice_keys)
 
     def retrieve(self, query: MemoryQuery) -> MemoryResult:
         if query.top_k <= 0:
@@ -610,4 +673,65 @@ class RFSnapLatticeMemory:
         ann_embeddings = [lattice._embeddings[d].detach().cpu() for d in memory._doc_ids]
         memory._ann_embeddings = torch.stack(ann_embeddings) if ann_embeddings else None
         return memory
+
+    def save_to_sqlite(self, db_path: str) -> None:
+        """Persist the index and documents to an SQLite database at `db_path`."""
+        from latticememory.sqlite_store import LatticeSqliteStore
+        store = LatticeSqliteStore(db_path)
+        docs = []
+        lattice_keys = {}
+        for doc_id in self._doc_ids:
+            emb = self.lattice._embeddings[doc_id]
+            text = self._texts[doc_id]
+            meta = self._metadata[doc_id]
+            docs.append(MemoryDocument(doc_id=doc_id, text=text, embedding=emb, metadata=meta))
+            lattice_keys[doc_id] = self.lattice._keys[doc_id]
+        store.add_documents(docs, lattice_keys)
+        store.close()
+
+    @classmethod
+    def load_from_sqlite(
+        cls,
+        db_path: str,
+        *,
+        fallback=None,
+        hamming_pool_multiplier: int | None = None,
+        rerank_mode: str | None = None,
+        lexical_weight: float | None = None,
+        neural_reranker: TextPairReranker | None = None,
+        neural_rerank_top_n: int | None = None,
+        beam_radius: int = 1,
+    ) -> "RFSnapLatticeMemory":
+        """Load and reconstruct a `RFSnapLatticeMemory` from an SQLite database."""
+        from latticememory.sqlite_store import LatticeSqliteStore
+        store = LatticeSqliteStore(db_path)
+        
+        rows = store.get_all_rows()
+        if not rows:
+            raise ValueError(f"SQLite database at {db_path} contains no documents")
+            
+        import numpy as np
+        first_emb = np.frombuffer(rows[0]["embedding"], dtype=np.float32)
+        d_model = len(first_emb)
+        
+        memory = cls(
+            d_model=d_model,
+            fallback=fallback,
+            hamming_pool_multiplier=hamming_pool_multiplier or 10,
+            rerank_mode=rerank_mode or "cosine",
+            lexical_weight=lexical_weight or 0.0,
+            neural_reranker=neural_reranker,
+            neural_rerank_top_n=neural_rerank_top_n,
+            beam_radius=beam_radius,
+        )
+        memory.sqlite_store = store
+        memory._load_from_store()
+        return memory
+
+
+
+
+
+
+
 

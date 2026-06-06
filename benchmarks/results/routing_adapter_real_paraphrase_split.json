@@ -1,0 +1,507 @@
+{
+  "adapter_hidden_multiplier": 1.0,
+  "adapter_kind": "residual_mlp",
+  "benchmark": "routing_adapter",
+  "claim_supported": "heldout lattice_exact routing",
+  "d_model": 1024,
+  "documents_indexed": 16,
+  "epochs": 60,
+  "final_train_accuracy_reported_by_trainer": 1.0,
+  "heldout": {
+    "correct_lattice_exact": 16,
+    "count": 16,
+    "lattice_exact_accuracy": 1.0,
+    "path_counts": {
+      "fallback": 0,
+      "lattice_exact": 16,
+      "lattice_hamming": 0,
+      "miss": 0
+    },
+    "rows": [
+      {
+        "correct_lattice_exact": true,
+        "expected": "Paris is the capital of France.",
+        "hit": "Paris is the capital of France.",
+        "path": "lattice_exact",
+        "query": "What is the capital of France?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "William Shakespeare wrote Hamlet.",
+        "hit": "William Shakespeare wrote Hamlet.",
+        "path": "lattice_exact",
+        "query": "Who wrote Hamlet?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "Mount Everest is the tallest mountain on Earth.",
+        "hit": "Mount Everest is the tallest mountain on Earth.",
+        "path": "lattice_exact",
+        "query": "What mountain is the tallest on Earth?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "Mars is known as the red planet.",
+        "hit": "Mars is known as the red planet.",
+        "path": "lattice_exact",
+        "query": "What is the red planet?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "Plants absorb carbon dioxide during photosynthesis.",
+        "hit": "Plants absorb carbon dioxide during photosynthesis.",
+        "path": "lattice_exact",
+        "query": "What gas do plants absorb?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "H2O is commonly called water.",
+        "hit": "H2O is commonly called water.",
+        "path": "lattice_exact",
+        "query": "What do we call H2O?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "Leonardo da Vinci painted the Mona Lisa.",
+        "hit": "Leonardo da Vinci painted the Mona Lisa.",
+        "path": "lattice_exact",
+        "query": "Who made the Mona Lisa painting?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "A dog is an animal that barks.",
+        "hit": "A dog is an animal that barks.",
+        "path": "lattice_exact",
+        "query": "What animal makes barking sounds?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "A piano has keys and pedals.",
+        "hit": "A piano has keys and pedals.",
+        "path": "lattice_exact",
+        "query": "What instrument uses both keys and pedals?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "Bees produce honey.",
+        "hit": "Bees produce honey.",
+        "path": "lattice_exact",
+        "query": "What substance do bees produce?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "Fish live in water.",
+        "hit": "Fish live in water.",
+        "path": "lattice_exact",
+        "query": "Where are fish found?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "Water freezes at zero degrees Celsius.",
+        "hit": "Water freezes at zero degrees Celsius.",
+        "path": "lattice_exact",
+        "query": "When does water freeze in Celsius?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "The heart pumps blood through the body.",
+        "hit": "The heart pumps blood through the body.",
+        "path": "lattice_exact",
+        "query": "What body organ circulates blood?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "The Sun is the closest star to Earth.",
+        "hit": "The Sun is the closest star to Earth.",
+        "path": "lattice_exact",
+        "query": "What is the nearest star to Earth?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "Spanish is spoken in Spain.",
+        "hit": "Spanish is spoken in Spain.",
+        "path": "lattice_exact",
+        "query": "Which language is used in Spain?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "Cows produce milk.",
+        "hit": "Cows produce milk.",
+        "path": "lattice_exact",
+        "query": "What product comes from cows?"
+      }
+    ]
+  },
+  "indexed_documents": [
+    "Paris is the capital of France.",
+    "William Shakespeare wrote Hamlet.",
+    "Mount Everest is the tallest mountain on Earth.",
+    "Mars is known as the red planet.",
+    "Plants absorb carbon dioxide during photosynthesis.",
+    "H2O is commonly called water.",
+    "Leonardo da Vinci painted the Mona Lisa.",
+    "A dog is an animal that barks.",
+    "A piano has keys and pedals.",
+    "Bees produce honey.",
+    "Fish live in water.",
+    "Water freezes at zero degrees Celsius.",
+    "The heart pumps blood through the body.",
+    "The Sun is the closest star to Earth.",
+    "Spanish is spoken in Spain.",
+    "Cows produce milk."
+  ],
+  "model": "dfrokido/bge-large-e8-snap",
+  "preset": "natural-qa-paraphrase-split",
+  "train": {
+    "correct_lattice_exact": 48,
+    "count": 48,
+    "lattice_exact_accuracy": 1.0,
+    "path_counts": {
+      "fallback": 0,
+      "lattice_exact": 48,
+      "lattice_hamming": 0,
+      "miss": 0
+    },
+    "rows": [
+      {
+        "correct_lattice_exact": true,
+        "expected": "Paris is the capital of France.",
+        "hit": "Paris is the capital of France.",
+        "path": "lattice_exact",
+        "query": "What city is France capital?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "Paris is the capital of France.",
+        "hit": "Paris is the capital of France.",
+        "path": "lattice_exact",
+        "query": "Name the capital city of France."
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "Paris is the capital of France.",
+        "hit": "Paris is the capital of France.",
+        "path": "lattice_exact",
+        "query": "Which city serves as France capital?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "William Shakespeare wrote Hamlet.",
+        "hit": "William Shakespeare wrote Hamlet.",
+        "path": "lattice_exact",
+        "query": "Who is the author of Hamlet?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "William Shakespeare wrote Hamlet.",
+        "hit": "William Shakespeare wrote Hamlet.",
+        "path": "lattice_exact",
+        "query": "Name the playwright behind Hamlet."
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "William Shakespeare wrote Hamlet.",
+        "hit": "William Shakespeare wrote Hamlet.",
+        "path": "lattice_exact",
+        "query": "Hamlet was written by whom?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "Mount Everest is the tallest mountain on Earth.",
+        "hit": "Mount Everest is the tallest mountain on Earth.",
+        "path": "lattice_exact",
+        "query": "Which mountain is tallest?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "Mount Everest is the tallest mountain on Earth.",
+        "hit": "Mount Everest is the tallest mountain on Earth.",
+        "path": "lattice_exact",
+        "query": "Name Earth tallest mountain."
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "Mount Everest is the tallest mountain on Earth.",
+        "hit": "Mount Everest is the tallest mountain on Earth.",
+        "path": "lattice_exact",
+        "query": "What is the highest mountain in the world?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "Mars is known as the red planet.",
+        "hit": "Mars is known as the red planet.",
+        "path": "lattice_exact",
+        "query": "Which planet is called the red planet?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "Mars is known as the red planet.",
+        "hit": "Mars is known as the red planet.",
+        "path": "lattice_exact",
+        "query": "Name the red planet."
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "Mars is known as the red planet.",
+        "hit": "Mars is known as the red planet.",
+        "path": "lattice_exact",
+        "query": "What planet has the red planet nickname?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "Plants absorb carbon dioxide during photosynthesis.",
+        "hit": "Plants absorb carbon dioxide during photosynthesis.",
+        "path": "lattice_exact",
+        "query": "What gas do plants take in?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "Plants absorb carbon dioxide during photosynthesis.",
+        "hit": "Plants absorb carbon dioxide during photosynthesis.",
+        "path": "lattice_exact",
+        "query": "Which gas is absorbed by plants?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "Plants absorb carbon dioxide during photosynthesis.",
+        "hit": "Plants absorb carbon dioxide during photosynthesis.",
+        "path": "lattice_exact",
+        "query": "Plants absorb what gas in photosynthesis?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "H2O is commonly called water.",
+        "hit": "H2O is commonly called water.",
+        "path": "lattice_exact",
+        "query": "What is H2O called?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "H2O is commonly called water.",
+        "hit": "H2O is commonly called water.",
+        "path": "lattice_exact",
+        "query": "Name the common name for H2O."
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "H2O is commonly called water.",
+        "hit": "H2O is commonly called water.",
+        "path": "lattice_exact",
+        "query": "H2O refers to what substance?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "Leonardo da Vinci painted the Mona Lisa.",
+        "hit": "Leonardo da Vinci painted the Mona Lisa.",
+        "path": "lattice_exact",
+        "query": "Who painted Mona Lisa?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "Leonardo da Vinci painted the Mona Lisa.",
+        "hit": "Leonardo da Vinci painted the Mona Lisa.",
+        "path": "lattice_exact",
+        "query": "Name the artist of Mona Lisa."
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "Leonardo da Vinci painted the Mona Lisa.",
+        "hit": "Leonardo da Vinci painted the Mona Lisa.",
+        "path": "lattice_exact",
+        "query": "Mona Lisa was painted by whom?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "A dog is an animal that barks.",
+        "hit": "A dog is an animal that barks.",
+        "path": "lattice_exact",
+        "query": "What animal barks?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "A dog is an animal that barks.",
+        "hit": "A dog is an animal that barks.",
+        "path": "lattice_exact",
+        "query": "Name an animal known for barking."
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "A dog is an animal that barks.",
+        "hit": "A dog is an animal that barks.",
+        "path": "lattice_exact",
+        "query": "Which pet makes a bark sound?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "A piano has keys and pedals.",
+        "hit": "A piano has keys and pedals.",
+        "path": "lattice_exact",
+        "query": "What instrument has keys and pedals?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "A piano has keys and pedals.",
+        "hit": "A piano has keys and pedals.",
+        "path": "lattice_exact",
+        "query": "Name a keyed instrument with pedals."
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "A piano has keys and pedals.",
+        "hit": "A piano has keys and pedals.",
+        "path": "lattice_exact",
+        "query": "Which musical instrument includes pedals and keys?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "Bees produce honey.",
+        "hit": "Bees produce honey.",
+        "path": "lattice_exact",
+        "query": "What do bees make?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "Bees produce honey.",
+        "hit": "Bees produce honey.",
+        "path": "lattice_exact",
+        "query": "Name the food produced by bees."
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "Bees produce honey.",
+        "hit": "Bees produce honey.",
+        "path": "lattice_exact",
+        "query": "Bees create what sweet substance?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "Fish live in water.",
+        "hit": "Fish live in water.",
+        "path": "lattice_exact",
+        "query": "Where do fish live?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "Fish live in water.",
+        "hit": "Fish live in water.",
+        "path": "lattice_exact",
+        "query": "Fish usually live in what environment?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "Fish live in water.",
+        "hit": "Fish live in water.",
+        "path": "lattice_exact",
+        "query": "What habitat do fish occupy?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "Water freezes at zero degrees Celsius.",
+        "hit": "Water freezes at zero degrees Celsius.",
+        "path": "lattice_exact",
+        "query": "At what Celsius temperature does water freeze?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "Water freezes at zero degrees Celsius.",
+        "hit": "Water freezes at zero degrees Celsius.",
+        "path": "lattice_exact",
+        "query": "What is water freezing point in Celsius?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "Water freezes at zero degrees Celsius.",
+        "hit": "Water freezes at zero degrees Celsius.",
+        "path": "lattice_exact",
+        "query": "Water becomes ice at what Celsius degree?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "The heart pumps blood through the body.",
+        "hit": "The heart pumps blood through the body.",
+        "path": "lattice_exact",
+        "query": "What organ pumps blood?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "The heart pumps blood through the body.",
+        "hit": "The heart pumps blood through the body.",
+        "path": "lattice_exact",
+        "query": "Which organ moves blood through the body?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "The heart pumps blood through the body.",
+        "hit": "The heart pumps blood through the body.",
+        "path": "lattice_exact",
+        "query": "Name the blood pumping organ."
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "The Sun is the closest star to Earth.",
+        "hit": "The Sun is the closest star to Earth.",
+        "path": "lattice_exact",
+        "query": "What star is closest to Earth?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "The Sun is the closest star to Earth.",
+        "hit": "The Sun is the closest star to Earth.",
+        "path": "lattice_exact",
+        "query": "Name Earth nearest star."
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "The Sun is the closest star to Earth.",
+        "hit": "The Sun is the closest star to Earth.",
+        "path": "lattice_exact",
+        "query": "Which star is nearest our planet?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "Spanish is spoken in Spain.",
+        "hit": "Spanish is spoken in Spain.",
+        "path": "lattice_exact",
+        "query": "What language is spoken in Spain?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "Spanish is spoken in Spain.",
+        "hit": "Spanish is spoken in Spain.",
+        "path": "lattice_exact",
+        "query": "Name the language people speak in Spain."
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "Spanish is spoken in Spain.",
+        "hit": "Spanish is spoken in Spain.",
+        "path": "lattice_exact",
+        "query": "Spain commonly uses what language?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "Cows produce milk.",
+        "hit": "Cows produce milk.",
+        "path": "lattice_exact",
+        "query": "What do cows produce?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "Cows produce milk.",
+        "hit": "Cows produce milk.",
+        "path": "lattice_exact",
+        "query": "Cows are known for producing what?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "Cows produce milk.",
+        "hit": "Cows produce milk.",
+        "path": "lattice_exact",
+        "query": "Name the drink cows provide."
+      }
+    ]
+  },
+  "train_loss_first": 186.88829549153647,
+  "train_loss_last": 0.7756276329358419,
+  "train_seconds": 5.555474399996456
+}

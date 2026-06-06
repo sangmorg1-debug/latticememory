@@ -10,6 +10,7 @@ from .memory import (
 )
 from .observability import GeneratorTrace, LatticeObservability, RetrievalEvent
 from .event_store import LatticeEventStore
+from .sqlite_store import LatticeSqliteStore
 from .fallbacks import FaissVectorFallback
 from .dual_encoder import (
     ContrastiveTrainResult,
@@ -23,11 +24,37 @@ from .dual_encoder import (
 )
 from .semantic_cache import RFSnapSemanticCache, SemanticCacheEntry, SemanticCacheResult
 from .text_runtime import RFSnapTextMemory, TextIndexResult
+from .index import LatticeIndex, LatticeStats, SearchResult
+from .agent_memory import AgentEpisodicMemory
+from .dedup import LatticeDedup
+from .dns import CrossModelAligner
+from .pipeline import LatticeDataPipeline
+from .proxy import LatticeLLMProxy
+from .training import (
+    E8RoutingLoss,
+    E8RoutingLossOutput,
+    LatticeRoutingTrainResult,
+    RoutingTrainingExample,
+    build_msmarco_examples,
+    evaluate_routing_examples,
+    load_msmarco_examples,
+    train_and_evaluate_msmarco,
+    train_lattice_adapter_from_examples,
+)
 
 __all__ = [
+    "AgentEpisodicMemory",
+    "E8RoutingLoss",
+    "E8RoutingLossOutput",
+    "LatticeDataPipeline",
+    "LatticeLLMProxy",
+    "LatticeRoutingTrainResult",
+    "LatticeDedup",
+    "CrossModelAligner",
     "ContrastiveTrainResult",
     "DenseVectorFallback",
     "FaissVectorFallback",
+    "LatticeSqliteStore",
     "GenerationContextPacket",
     "GeneratorTrace",
     "MemoryDocument",
@@ -37,6 +64,7 @@ __all__ = [
     "RFSnapLatticeMemory",
     "RFSnapSemanticCache",
     "RFSnapTextMemory",
+    "RoutingTrainingExample",
     "SemanticCacheEntry",
     "SemanticCacheResult",
     "TextIndexResult",
@@ -49,10 +77,14 @@ __all__ = [
     "RFSnapDualTextMemory",
     "ResidualMLPAdapterEncoder",
     "RetrievalEvent",
+    "build_msmarco_examples",
+    "evaluate_routing_examples",
     "fit_lattice_dual_encoder",
+    "load_msmarco_examples",
+    "train_and_evaluate_msmarco",
     "train_lattice_contrastive_encoder",
+    "train_lattice_adapter_from_examples",
     "LatticeIndex",
     "LatticeStats",
     "SearchResult",
 ]
-from .index import LatticeIndex, LatticeStats, SearchResult

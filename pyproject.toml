@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "LatticeMemory — 10.7x compressed semantic index with E8 lattice addressing. O(1) retrieval for domain knowledge bases."
 readme = "README.md"
 requires-python = ">=3.10"
-license = {text = "MIT"}
+license = "MIT"
 dependencies = [
     "torch>=2.0.0",
     "transformers>=4.30.0",
@@ -19,6 +19,13 @@ dependencies = [
 [project.optional-dependencies]
 langchain = ["langchain-core>=0.1.0"]
 faiss = ["faiss-cpu"]
+llamaindex = ["llama-index-core"]
+hf = ["datasets>=2.0.0"]
+proxy = ["fastapi", "uvicorn", "httpx"]
+training = ["datasets>=2.0.0", "tqdm"]
+
+[project.scripts]
+latticememory-train-msmarco = "latticememory.train_msmarco:main"
 
 [project.urls]
 Homepage = "https://github.com/sangmorg1-debug/e8-Project"
@@ -27,6 +34,7 @@ Homepage = "https://github.com/sangmorg1-debug/e8-Project"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["latticememory*"]
+exclude = ["tests*", "docs*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

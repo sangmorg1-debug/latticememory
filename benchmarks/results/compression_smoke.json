@@ -1,0 +1,13 @@
+{
+  "benchmark": "compression",
+  "blocks": 48,
+  "d_model": 384,
+  "float32_embedding_bytes": 49152,
+  "n_docs": 32,
+  "sqlite_document_count": 32,
+  "sqlite_file_size_bytes": 81920,
+  "stored_key_compression_vs_float32": 32.0,
+  "stored_lattice_key_bytes": 1536,
+  "theoretical_compression_vs_float32": 10.7,
+  "theoretical_lattice_payload_bytes": 4608
+}

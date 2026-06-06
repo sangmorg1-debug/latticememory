@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LatticeMemory</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: Inter, Segoe UI, Arial, sans-serif;
+      color: #172033;
+      background: #f5f7fb;
+    }
+    body {
+      width: 360px;
+      margin: 0;
+      padding: 14px;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    h1 {
+      font-size: 16px;
+      margin: 0;
+    }
+    .stat {
+      font-size: 12px;
+      color: #526070;
+    }
+    .search {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    input {
+      min-width: 0;
+      padding: 9px 10px;
+      border: 1px solid #cfd6e3;
+      border-radius: 6px;
+      font-size: 13px;
+      background: white;
+    }
+    button {
+      border: 0;
+      border-radius: 6px;
+      padding: 9px 10px;
+      font-size: 13px;
+      font-weight: 600;
+      background: #2357d8;
+      color: white;
+      cursor: pointer;
+    }
+    button.secondary {
+      background: #e7ebf3;
+      color: #263142;
+    }
+    .actions {
+      display: flex;
+      gap: 8px;
+      margin: 12px 0;
+    }
+    #results {
+      display: grid;
+      gap: 8px;
+      max-height: 260px;
+      overflow: auto;
+    }
+    .result {
+      display: block;
+      padding: 9px;
+      border-radius: 6px;
+      background: white;
+      border: 1px solid #e0e5ee;
+      color: #172033;
+      text-decoration: none;
+    }
+    .result-title {
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+    .result-url {
+      font-size: 11px;
+      color: #5f6f82;
+      overflow-wrap: anywhere;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>LatticeMemory</h1>
+    <div class="stat"><span id="count">0</span> indexed</div>
+  </header>
+  <div class="search">
+    <input id="query" type="search" placeholder="Search local history">
+    <button id="search">Search</button>
+  </div>
+  <div class="actions">
+    <button id="export" class="secondary">Export</button>
+    <button id="clear" class="secondary">Clear</button>
+  </div>
+  <div id="results"></div>
+  <script src="popup.js"></script>
+</body>
+</html>

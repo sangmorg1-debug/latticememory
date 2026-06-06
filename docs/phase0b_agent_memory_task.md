@@ -1,0 +1,14 @@
+- [x] Implement `latticememory/agent_memory.py`
+  - [x] Create `AgentEpisodicMemory` class wrapping `RFSnapLatticeMemory`.
+  - [x] Implement versioning for duplicate E8 address episodes.
+  - [x] Implement audit trail logging for memory operations.
+- [x] Implement `latticememory/dedup.py`
+  - [x] Create `LatticeDedup` class.
+  - [x] Implement $O(N)$ semantic clustering and corpus filtering.
+- [x] Create runnable demos
+  - [x] Create `examples/agent_memory_demo.py`.
+  - [x] Create `examples/semantic_deduplication_demo.py`.
+- [x] Verify execution and run test suite
+  - [x] Run agent memory demo.
+  - [x] Run semantic deduplication demo.
+  - [x] Ensure pytest suite passes.

@@ -1,0 +1,14 @@
+- [x] Implement `latticememory/dns.py`
+  - [x] Implement `CrossModelAligner` class.
+  - [x] Implement `snap_a` and `snap_b` returning byte keys.
+  - [x] Implement training loop using STE and MSE loss on snapped vectors.
+- [x] Expose `CrossModelAligner` in `latticememory/__init__.py`.
+- [x] Create `examples/cross_model_dns_demo.py`
+  - [x] Generate paired Model A (384D) and Model B (512D) concept embeddings.
+  - [x] Index documents using Model A keys.
+  - [x] Train `CrossModelAligner` on training pairs.
+  - [x] Verify that Model B query keys resolve to the exact same E8 addresses as Model A document keys.
+- [x] Verify and run tests/simulations
+  - [x] Run `python examples/cross_model_dns_demo.py` and inspect output.
+  - [x] Ensure all existing tests pass.
+

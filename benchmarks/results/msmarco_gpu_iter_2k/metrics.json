@@ -1,0 +1,60 @@
+{
+  "adapter_hidden_multiplier": 0.5,
+  "adapter_kind": "residual_mlp",
+  "address_loss_history": [
+    4.087859462738037,
+    3.83654056930542,
+    3.618970239639282,
+    3.4079423274993896,
+    3.2223364486694335
+  ],
+  "d_model": 1024,
+  "dataset_config": "v1.1",
+  "dataset_name": "microsoft/ms_marco",
+  "epochs": 5,
+  "eval": {
+    "correct_at_1": 0,
+    "lattice_route_rate": 0.0,
+    "lattice_routed": 0,
+    "path_counts": {
+      "miss": 200
+    },
+    "recall_at_1": 0.0,
+    "total": 200
+  },
+  "eval_limit": 200,
+  "eval_split": "validation",
+  "examples_seen": 2000,
+  "final_train_accuracy": 0.0,
+  "hard_loss_history": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "lambda_address": 10.0,
+  "lambda_hard": 1.0,
+  "lambda_neighborhood": 0.5,
+  "model": "dfrokido/bge-large-e8-snap",
+  "negatives_seen": 14106,
+  "train": {
+    "correct_at_1": 0,
+    "lattice_route_rate": 0.0,
+    "lattice_routed": 0,
+    "path_counts": {
+      "miss": 2000
+    },
+    "recall_at_1": 0.0,
+    "total": 2000
+  },
+  "train_limit": 2000,
+  "train_loss_history": [
+    92.05567803955078,
+    88.06499188232422,
+    84.24544409179687,
+    80.40941552734375,
+    76.93668566894532
+  ],
+  "train_split": "train"
+}

@@ -1,8 +1,8 @@
 # LatticeMemory
 
-**10.7× smaller index. Same retrieval quality. Every concept has a permanent address.**
+**10.7× smaller E8 key representation. Hybrid retrieval for full semantic search. Every concept has a model-specific address.**
 
-LatticeMemory uses the [E8 lattice](https://en.wikipedia.org/wiki/E8_lattice) — the densest mathematical sphere packing in 8 dimensions — as a universal address space for meaning. Every text embedding snaps to its nearest E8 coordinate: a deterministic 128-byte address that is 10.7× smaller than float32 and enables O(1) retrieval for domain knowledge bases.
+LatticeMemory uses the [E8 lattice](https://en.wikipedia.org/wiki/E8_lattice) — the densest mathematical sphere packing in 8 dimensions — as a model-specific address space for meaning. Every text embedding snaps to its nearest E8 coordinate: a deterministic address (128-byte hash key for 1024-dim; 10.7× smaller than float32 when address + scale bytes are counted together) that enables O(1) retrieval for symmetric cache, deduplication, and near-duplicate workloads.
 
 [**Live Demo ->**](https://huggingface.co/spaces/dfrokido/LatticeMemory) | [**Model ->**](https://huggingface.co/dfrokido/bge-large-e8-snap) | [**GitHub ->**](https://github.com/sangmorg1-debug/e8-Project)
 
@@ -18,9 +18,11 @@ LatticeMemory uses the [E8 lattice](https://en.wikipedia.org/wiki/E8_lattice) �
 | Int4 | 8× | 0.51 GB | 18.5 ms | 100% |
 | **LatticeMemory** | **10.7×** | **0.38 GB** | **1.2 ms** | **100%** |
 
-- More compressed than int4. Faster than float32. Same quality as both.
+- More compressed than int4 for E8 keys. Faster than float32 on exact-key cache hits. Dense fallback is still required for asymmetric QA/passage search.
 - STS quality: **0.8714** (`bge-large-e8-snap`) vs 0.8637 float baseline (+0.0077)
 - End-to-end RAG: **82% answer agreement** with float32 at identical recall
+
+> **Compression basis:** The 10.7× figure is the E8 key-representation ratio — 1 address byte + 2 scale bytes per 8-dim block = 384 bytes for 1024-dim vs 4,096 bytes for float32. The stated ratio is achieved in key-only mode (exact + Hamming-1 retrieval only, cosine fallback disabled), which is suitable for symmetric workloads (semantic cache, agent episodic memory, duplicate detection, IoT commands). For asymmetric QA/passage search like MS MARCO, the current implementation must use hybrid mode: E8 keys first, then dense cosine fallback on lattice miss. Int4/Int8 fallback compression is a planned optimization and must be benchmarked against the float32 baseline before making equal-recall claims.
 
 ---
 
@@ -59,7 +61,7 @@ results2 = index.search("capital of France", top_k=2)
 print(results2[0].text)           # Paris is the capital of France.
 
 print(index.stats())
-# LatticeStats(docs=3, index_size_mb=0.0004, compression_vs_float32=10.7)
+# LatticeStats(docs=3, index_size_mb=0.0011, compression_vs_float32=10.7)
 ```
 
 ### LLM Semantic Cache (LangChain)

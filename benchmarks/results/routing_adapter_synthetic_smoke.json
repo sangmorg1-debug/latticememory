@@ -1,0 +1,124 @@
+{
+  "adapter_hidden_multiplier": 0.5,
+  "adapter_kind": "residual_mlp",
+  "benchmark": "routing_adapter",
+  "claim_supported": "no lattice_exact routing shown",
+  "d_model": 384,
+  "epochs": 2,
+  "final_train_accuracy_reported_by_trainer": 0.0,
+  "heldout": {
+    "correct_lattice_exact": 0,
+    "count": 4,
+    "lattice_exact_accuracy": 0.0,
+    "path_counts": {
+      "fallback": 0,
+      "lattice_exact": 0,
+      "lattice_hamming": 0,
+      "miss": 4
+    },
+    "rows": [
+      {
+        "correct_lattice_exact": false,
+        "expected": "training query 000008",
+        "hit": null,
+        "path": "miss",
+        "query": "training query 000008"
+      },
+      {
+        "correct_lattice_exact": false,
+        "expected": "training query 000009",
+        "hit": null,
+        "path": "miss",
+        "query": "training query 000009"
+      },
+      {
+        "correct_lattice_exact": false,
+        "expected": "training query 000010",
+        "hit": null,
+        "path": "miss",
+        "query": "training query 000010"
+      },
+      {
+        "correct_lattice_exact": false,
+        "expected": "training query 000011",
+        "hit": null,
+        "path": "miss",
+        "query": "training query 000011"
+      }
+    ]
+  },
+  "model": "synthetic",
+  "preset": "synthetic-copy",
+  "train": {
+    "correct_lattice_exact": 0,
+    "count": 8,
+    "lattice_exact_accuracy": 0.0,
+    "path_counts": {
+      "fallback": 0,
+      "lattice_exact": 0,
+      "lattice_hamming": 0,
+      "miss": 8
+    },
+    "rows": [
+      {
+        "correct_lattice_exact": false,
+        "expected": "training query 000000",
+        "hit": null,
+        "path": "miss",
+        "query": "training query 000000"
+      },
+      {
+        "correct_lattice_exact": false,
+        "expected": "training query 000001",
+        "hit": null,
+        "path": "miss",
+        "query": "training query 000001"
+      },
+      {
+        "correct_lattice_exact": false,
+        "expected": "training query 000002",
+        "hit": null,
+        "path": "miss",
+        "query": "training query 000002"
+      },
+      {
+        "correct_lattice_exact": false,
+        "expected": "training query 000003",
+        "hit": null,
+        "path": "miss",
+        "query": "training query 000003"
+      },
+      {
+        "correct_lattice_exact": false,
+        "expected": "training query 000004",
+        "hit": null,
+        "path": "miss",
+        "query": "training query 000004"
+      },
+      {
+        "correct_lattice_exact": false,
+        "expected": "training query 000005",
+        "hit": null,
+        "path": "miss",
+        "query": "training query 000005"
+      },
+      {
+        "correct_lattice_exact": false,
+        "expected": "training query 000006",
+        "hit": null,
+        "path": "miss",
+        "query": "training query 000006"
+      },
+      {
+        "correct_lattice_exact": false,
+        "expected": "training query 000007",
+        "hit": null,
+        "path": "miss",
+        "query": "training query 000007"
+      }
+    ]
+  },
+  "train_loss_first": 29.361663818359375,
+  "train_loss_last": 91.36115264892578,
+  "train_seconds": 0.9636212999466807
+}

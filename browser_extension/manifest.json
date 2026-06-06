@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "LatticeMemory Local Search",
+  "version": "0.1.0",
+  "description": "Local-first semantic history search using E8 lattice addresses.",
+  "minimum_chrome_version": "91",
+  "permissions": ["history", "storage"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "LatticeMemory",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "wasm/latticememory_kernel_bg.wasm",
+        "wasm/latticememory_kernel.js"
+      ],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

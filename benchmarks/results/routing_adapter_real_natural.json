@@ -1,0 +1,152 @@
+{
+  "adapter_hidden_multiplier": 0.5,
+  "adapter_kind": "residual_mlp",
+  "benchmark": "routing_adapter",
+  "claim_supported": "trained-pair lattice_exact routing only; heldout generalization not shown",
+  "d_model": 1024,
+  "epochs": 30,
+  "final_train_accuracy_reported_by_trainer": 1.0,
+  "heldout": {
+    "correct_lattice_exact": 0,
+    "count": 4,
+    "lattice_exact_accuracy": 0.0,
+    "path_counts": {
+      "fallback": 0,
+      "lattice_exact": 2,
+      "lattice_hamming": 0,
+      "miss": 2
+    },
+    "rows": [
+      {
+        "correct_lattice_exact": false,
+        "expected": "The heart pumps blood through the body.",
+        "hit": null,
+        "path": "miss",
+        "query": "What organ pumps blood?"
+      },
+      {
+        "correct_lattice_exact": false,
+        "expected": "The Sun is the closest star to Earth.",
+        "hit": "Mars is known as the red planet.",
+        "path": "lattice_exact",
+        "query": "What star is closest to Earth?"
+      },
+      {
+        "correct_lattice_exact": false,
+        "expected": "Spanish is spoken in Spain.",
+        "hit": null,
+        "path": "miss",
+        "query": "What language is spoken in Spain?"
+      },
+      {
+        "correct_lattice_exact": false,
+        "expected": "Cows produce milk.",
+        "hit": "Bees produce honey.",
+        "path": "lattice_exact",
+        "query": "What do cows produce?"
+      }
+    ]
+  },
+  "model": "dfrokido/bge-large-e8-snap",
+  "preset": "natural-qa",
+  "train": {
+    "correct_lattice_exact": 12,
+    "count": 12,
+    "lattice_exact_accuracy": 1.0,
+    "path_counts": {
+      "fallback": 0,
+      "lattice_exact": 12,
+      "lattice_hamming": 0,
+      "miss": 0
+    },
+    "rows": [
+      {
+        "correct_lattice_exact": true,
+        "expected": "Paris is the capital of France.",
+        "hit": "Paris is the capital of France.",
+        "path": "lattice_exact",
+        "query": "What city is the capital of France?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "William Shakespeare wrote Hamlet.",
+        "hit": "William Shakespeare wrote Hamlet.",
+        "path": "lattice_exact",
+        "query": "Who wrote Hamlet?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "Mount Everest is the tallest mountain on Earth.",
+        "hit": "Mount Everest is the tallest mountain on Earth.",
+        "path": "lattice_exact",
+        "query": "What is the tallest mountain?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "Mars is known as the red planet.",
+        "hit": "Mars is known as the red planet.",
+        "path": "lattice_exact",
+        "query": "What planet is known as the red planet?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "Plants absorb carbon dioxide during photosynthesis.",
+        "hit": "Plants absorb carbon dioxide during photosynthesis.",
+        "path": "lattice_exact",
+        "query": "What gas do plants absorb?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "H2O is commonly called water.",
+        "hit": "H2O is commonly called water.",
+        "path": "lattice_exact",
+        "query": "What is H2O commonly called?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "Leonardo da Vinci painted the Mona Lisa.",
+        "hit": "Leonardo da Vinci painted the Mona Lisa.",
+        "path": "lattice_exact",
+        "query": "Who painted the Mona Lisa?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "A dog is an animal that barks.",
+        "hit": "A dog is an animal that barks.",
+        "path": "lattice_exact",
+        "query": "What animal barks?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "A piano has keys and pedals.",
+        "hit": "A piano has keys and pedals.",
+        "path": "lattice_exact",
+        "query": "What instrument has keys and pedals?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "Bees produce honey.",
+        "hit": "Bees produce honey.",
+        "path": "lattice_exact",
+        "query": "What do bees produce?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "Fish live in water.",
+        "hit": "Fish live in water.",
+        "path": "lattice_exact",
+        "query": "Where do fish live?"
+      },
+      {
+        "correct_lattice_exact": true,
+        "expected": "Water freezes at zero degrees Celsius.",
+        "hit": "Water freezes at zero degrees Celsius.",
+        "path": "lattice_exact",
+        "query": "What is the freezing point of water?"
+      }
+    ]
+  },
+  "train_loss_first": 128.40314865112305,
+  "train_loss_last": 0.2553409934043884,
+  "train_seconds": 1.006275399995502
+}

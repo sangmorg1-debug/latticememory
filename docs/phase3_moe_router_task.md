@@ -1,0 +1,13 @@
+- [x] Implement `latticememory/moe.py`
+  - [x] Implement mathematical sub-lattice projection for E8, D8, E7, and E6.
+  - [x] Implement D8 binary coset router.
+  - [x] Implement E7 and E6 subspace projection routing.
+  - [x] Implement E8 coset modulo router for arbitrary N experts.
+  - [x] Implement load balancing metrics (entropy, coefficient of variation).
+- [x] Create `examples/moe_routing_simulation.py`
+  - [x] Simulate transformer residual stream activations across layers.
+  - [x] Run router simulation with D8, E7/E6, and coset modulo routers.
+  - [x] Measure routing balance, stability, and entropy under random vs optimized projection setups.
+- [x] Verify execution and run tests/simulations
+  - [x] Execute `python examples/moe_routing_simulation.py` and inspect output.
+  - [x] Ensure all existing tests still pass.

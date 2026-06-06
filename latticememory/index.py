@@ -28,7 +28,7 @@ class LatticeStats:
 
 
 class LatticeIndex:
-    def __init__(self, model: str = DEFAULT_MODEL, device: str = "auto", batch_size: int = 64):
+    def __init__(self, model: str = DEFAULT_MODEL, device: str = "auto", batch_size: int = 64, beam_radius: int = 1):
         from sentence_transformers import SentenceTransformer
         if device == "auto":
             import torch
@@ -39,13 +39,13 @@ class LatticeIndex:
             import numpy as np
             probe = encoder.encode(["dimension probe"])
             d_model = int(np.asarray(probe).shape[-1])
-        self._init_with_encoder(encoder, d_model=d_model, batch_size=batch_size)
+        self._init_with_encoder(encoder, d_model=d_model, batch_size=batch_size, beam_radius=beam_radius)
 
-    def _init_with_encoder(self, encoder, *, d_model: int, batch_size: int = 64) -> None:
+    def _init_with_encoder(self, encoder, *, d_model: int, batch_size: int = 64, beam_radius: int = 1) -> None:
         from latticememory.memory import DenseVectorFallback
         self._d_model = d_model
         fallback = DenseVectorFallback(d_model=d_model)
-        self._runtime = RFSnapTextMemory(encoder=encoder, d_model=d_model, batch_size=batch_size, fallback=fallback)
+        self._runtime = RFSnapTextMemory(encoder=encoder, d_model=d_model, batch_size=batch_size, fallback=fallback, beam_radius=beam_radius)
         self._total_queries: int = 0
         self._exact_hits: int = 0
 
