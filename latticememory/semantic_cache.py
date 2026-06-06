@@ -57,6 +57,29 @@ class RFSnapSemanticCache:
         self.allow_neighborhood = allow_neighborhood
         self._entries: dict[str, SemanticCacheEntry] = {}
 
+        # Restore existing cache entries from runtime memory on startup
+        if hasattr(self.runtime, "memory") and hasattr(self.runtime.memory, "_doc_ids"):
+            for doc_id in self.runtime.memory._doc_ids:
+                meta = self.runtime.memory.get_document_metadata(doc_id)
+                if meta and "source_prompt" in meta:
+                    prompt = meta["source_prompt"]
+                    created_at = meta.get("cache_created_at", time.time())
+                    updated_at = meta.get("cache_updated_at", time.time())
+                    value = meta.get("cache_value")
+                    lattice_key = self.runtime.memory.get_document_lattice_key(doc_id)
+                    user_metadata = {k: v for k, v in meta.items() if k not in {
+                        "cache_id", "source_prompt", "cache_created_at", "cache_updated_at", "cache_value"
+                    }}
+                    self._entries[doc_id] = SemanticCacheEntry(
+                        cache_id=doc_id,
+                        prompt=prompt,
+                        value=value,
+                        lattice_key=lattice_key,
+                        metadata=user_metadata,
+                        created_at=created_at,
+                        updated_at=updated_at,
+                    )
+
     @property
     def size(self) -> int:
         return len(self._entries)
@@ -168,6 +191,7 @@ class RFSnapSemanticCache:
                 "source_prompt": entry.prompt,
                 "cache_created_at": entry.created_at,
                 "cache_updated_at": entry.updated_at,
+                "cache_value": entry.value,
             }
         )
         return MemoryDocument(

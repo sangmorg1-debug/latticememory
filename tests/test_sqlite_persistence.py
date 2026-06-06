@@ -106,3 +106,41 @@ def test_memory_save_and_load_sqlite_with_fallback(temp_db_path):
     assert loaded.fallback is not None
     assert loaded.fallback.num_documents == 1
     assert loaded.fallback.text_for("doc-1") == "Save fallback text"
+
+
+def test_semantic_cache_sqlite_persistence(temp_db_path):
+    from latticememory.semantic_cache import RFSnapSemanticCache
+    from latticememory.text_runtime import RFSnapTextMemory
+    
+    encoder = FakeEncoder(d_model=384)
+    # Build first instance
+    memory = RFSnapLatticeMemory(d_model=384, sqlite_path=temp_db_path)
+    runtime = RFSnapTextMemory(encoder=encoder, d_model=384, memory=memory)
+    cache = RFSnapSemanticCache(runtime=runtime)
+    
+    # Store some values
+    val = {"choices": [{"message": {"content": "Hello response"}}]}
+    cache.put("What is E8?", value=val, metadata={"user": "alice"})
+    assert cache.size == 1
+    
+    # Verify hit on first instance
+    res = cache.get("What is E8?")
+    assert res.hit is True
+    assert res.value == val
+    assert res.metadata == {"user": "alice"}
+    
+    # Close first store connection
+    memory.sqlite_store.close()
+    
+    # Recreate the memory and cache using same SQLite DB path
+    memory2 = RFSnapLatticeMemory(d_model=384, sqlite_path=temp_db_path)
+    runtime2 = RFSnapTextMemory(encoder=encoder, d_model=384, memory=memory2)
+    cache2 = RFSnapSemanticCache(runtime=runtime2)
+    
+    # Check that it reloaded the entries on startup
+    assert cache2.size == 1
+    res2 = cache2.get("What is E8?")
+    assert res2.hit is True
+    assert res2.value == val
+    assert res2.metadata == {"user": "alice"}
+

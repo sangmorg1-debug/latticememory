@@ -30,6 +30,8 @@ from .dedup import LatticeDedup
 from .dns import CrossModelAligner
 from .pipeline import LatticeDataPipeline
 from .proxy import LatticeLLMProxy
+from .stream import LatticeStreamDedup
+from .agent_sync import AgentMemorySync, make_autogen_sync_tools, LangGraphLatticeAdapter
 from .training import (
     E8RoutingLoss,
     E8RoutingLossOutput,
@@ -44,10 +46,14 @@ from .training import (
 
 __all__ = [
     "AgentEpisodicMemory",
+    "AgentMemorySync",
+    "make_autogen_sync_tools",
+    "LangGraphLatticeAdapter",
     "E8RoutingLoss",
     "E8RoutingLossOutput",
     "LatticeDataPipeline",
     "LatticeLLMProxy",
+    "LatticeStreamDedup",
     "LatticeRoutingTrainResult",
     "LatticeDedup",
     "CrossModelAligner",
