@@ -394,3 +394,40 @@ def test_block_failure_audit_counts_false_negative_and_confusion_blocks():
     assert summary["false_negative_blocks"][0]["count"] == 1
     assert summary["stable_but_confusing_blocks"][0]["block"] == 0
     assert summary["closest_near_miss_same_blocks"][0]["block"] == 0
+
+
+def test_canonical_key_training_builds_intent_rows():
+    from benchmarks.benchmark_canonical_key_training import build_intent_lookup, build_positive_rows
+
+    source = {
+        "intents": [
+            {
+                "intent_id": "cancel",
+                "canonical": "cancel subscription",
+                "paraphrases": ["stop plan", "end membership", "turn off renewal"],
+            },
+            {
+                "intent_id": "pause",
+                "canonical": "pause subscription",
+                "paraphrases": ["hold plan", "freeze membership", "pause renewal"],
+            },
+        ]
+    }
+
+    lookup = build_intent_lookup(source)
+    assert lookup["stop plan"] == "cancel"
+    assert lookup["pause subscription"] == "pause"
+
+    train_rows, heldout_rows = build_positive_rows(source, train_per_intent=2)
+    assert train_rows == [
+        {"intent_id": "cancel", "prompt": "cancel subscription", "target": "cancel subscription"},
+        {"intent_id": "cancel", "prompt": "stop plan", "target": "cancel subscription"},
+        {"intent_id": "cancel", "prompt": "end membership", "target": "cancel subscription"},
+        {"intent_id": "pause", "prompt": "pause subscription", "target": "pause subscription"},
+        {"intent_id": "pause", "prompt": "hold plan", "target": "pause subscription"},
+        {"intent_id": "pause", "prompt": "freeze membership", "target": "pause subscription"},
+    ]
+    assert heldout_rows == [
+        {"intent_id": "cancel", "prompt": "turn off renewal", "target": "cancel subscription"},
+        {"intent_id": "pause", "prompt": "pause renewal", "target": "pause subscription"},
+    ]
