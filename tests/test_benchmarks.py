@@ -224,3 +224,78 @@ def test_hamming_router_benchmark_load_pairs_selects_requested_key(tmp_path):
 
     assert load_pairs(str(pairs_path), key="paraphrases") == [("same a", "same b")]
     assert load_pairs(str(pairs_path), key="near_misses") == [("near a", "near b")]
+
+
+def test_nvidia_demo_dataset_split_writes_benchmark_inputs(tmp_path):
+    from benchmarks.generate_nvidia_demo_dataset import write_demo_files
+
+    intents = []
+    for idx in range(12):
+        intents.append(
+            {
+                "intent_id": f"intent_{idx}",
+                "category": "support",
+                "canonical_prompt": f"canonical question {idx}",
+                "safe_answer": f"safe answer {idx}",
+                "paraphrases": [f"variant {idx}-{j}" for j in range(8)],
+            }
+        )
+    source = {
+        "domain": "customer_support_ecommerce_saas",
+        "intents": intents,
+        "near_miss_pairs": [
+            {"a_intent": f"intent_{idx % 12}", "b_intent": f"intent_{(idx + 1) % 12}", "reason": "close"}
+            for idx in range(20)
+        ],
+    }
+
+    paths = write_demo_files(source, tmp_path)
+
+    calibration = json.loads(paths["calibration"].read_text(encoding="utf-8"))
+    heldout_para = json.loads(paths["heldout_paraphrases"].read_text(encoding="utf-8"))
+    heldout_near = json.loads(paths["heldout_near_misses"].read_text(encoding="utf-8"))
+    prompts = json.loads(paths["prompts_responses"].read_text(encoding="utf-8"))
+    manifest = json.loads(paths["manifest"].read_text(encoding="utf-8"))
+
+    assert len(calibration["paraphrases"]) == 12 * 8
+    assert len(calibration["near_misses"]) == 20 * 4
+    assert heldout_para["paraphrases"] == []
+    assert len(heldout_near["near_misses"]) == 20 * 2
+    assert len(prompts) == 12 * 7
+    assert manifest["artifact_type"] == "latticememory_nvidia_product_demo_dataset"
+
+
+def test_render_hamming_router_results_page_contains_key_metrics():
+    from benchmarks.render_hamming_router_results_page import render_results_page
+
+    html = render_results_page(
+        {
+            "artifact_type": "latticememory_hamming_proof_results",
+            "artifact_version": 1,
+            "model": "demo-model",
+            "d_model": 1024,
+            "created_at": "2026-06-07T00:00:00Z",
+            "calibration_data_sha256": "abc123",
+            "fp_budget": 0.0,
+            "calibrated_threshold": 64,
+            "metrics": {
+                "held_out_recall": 0.875,
+                "held_out_fp_rate": 0.0,
+                "mean_latency_ms": 12.34,
+            },
+            "cache_simulation": {
+                "total_prompts": 10,
+                "hit_rate": 0.4,
+            },
+            "distributions": {
+                "paraphrase": {"n": 8, "mean": 55.0},
+                "near_miss": {"n": 8, "mean": 90.0},
+            },
+            "threshold_curve": [{"threshold": 64, "recall": 0.875, "fp_rate": 0.0}],
+        }
+    )
+
+    assert "LatticeMemory HammingRouter Demo" in html
+    assert "87.5%" in html
+    assert "0.0%" in html
+    assert "demo-model" in html
