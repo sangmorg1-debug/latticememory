@@ -3,10 +3,13 @@ from __future__ import annotations
 import hashlib
 import time
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .memory import MemoryQuery
 from .text_runtime import RFSnapTextMemory
+
+if TYPE_CHECKING:
+    from .hamming_router import HammingRouter
 
 
 @dataclass(frozen=True)
@@ -31,6 +34,12 @@ class SemanticCacheResult:
     metadata: dict = field(default_factory=dict)
     retrieval_path: str = "miss"
     latency_ms: float = 0.0
+    hamming_distance: int = -1  # -1 = not a Hamming-NN hit
+    shadow_hit: bool = False
+    shadow_cache_id: str | None = None
+    shadow_hamming_distance: int = -1
+    shadow_source_prompt: str | None = None
+    shadow_value: Any | None = None
 
 
 class RFSnapSemanticCache:
@@ -49,12 +58,19 @@ class RFSnapSemanticCache:
         dataset: str | None = None,
         index_id: str | None = None,
         allow_neighborhood: bool = False,
+        hamming_router: "HammingRouter | None" = None,
+        hamming_threshold: int = 70,
+        hamming_router_mode: str = "off",
     ):
         self.runtime = runtime
         self.product = product
         self.dataset = dataset
         self.index_id = index_id
         self.allow_neighborhood = allow_neighborhood
+        self._hamming_router = hamming_router
+        self._hamming_threshold = hamming_threshold
+        self.hamming_router_mode = hamming_router_mode
+        self._router_cache_ids: set[str] = set()
         self._entries: dict[str, SemanticCacheEntry] = {}
 
         # Restore existing cache entries from runtime memory on startup
@@ -70,7 +86,7 @@ class RFSnapSemanticCache:
                     user_metadata = {k: v for k, v in meta.items() if k not in {
                         "cache_id", "source_prompt", "cache_created_at", "cache_updated_at", "cache_value"
                     }}
-                    self._entries[doc_id] = SemanticCacheEntry(
+                    entry = SemanticCacheEntry(
                         cache_id=doc_id,
                         prompt=prompt,
                         value=value,
@@ -79,6 +95,10 @@ class RFSnapSemanticCache:
                         created_at=created_at,
                         updated_at=updated_at,
                     )
+                    self._entries[doc_id] = entry
+                    if self._hamming_router is not None and lattice_key:
+                        self._hamming_router.add_from_key(lattice_key, doc_id)
+                        self._router_cache_ids.add(doc_id)
 
     @property
     def size(self) -> int:
@@ -103,6 +123,9 @@ class RFSnapSemanticCache:
         self.runtime.memory.add_documents([
             self._entry_to_document(entry, embedding)
         ])
+        if self._hamming_router is not None and cache_id not in self._router_cache_ids:
+            self._hamming_router.add_from_key(lattice_key, cache_id)
+            self._router_cache_ids.add(cache_id)
         return entry
 
     def get(
@@ -114,8 +137,66 @@ class RFSnapSemanticCache:
         dataset: str | None = None,
         index_id: str | None = None,
     ) -> SemanticCacheResult:
+        t0 = time.time()
         embedding = self.runtime._encode_texts([prompt])[0]
         lattice_key = self.runtime.memory.lattice_key_for(embedding)
+
+        # Fast path: O(1) exact dict lookup (avoids memory.retrieve() round-trip)
+        cache_id = self._cache_id_for(lattice_key)
+        entry = self._entries.get(cache_id)
+        if entry is not None:
+            return SemanticCacheResult(
+                hit=True,
+                hit_type="exact",
+                value=entry.value,
+                cache_id=entry.cache_id,
+                lattice_key=lattice_key,
+                source_prompt=entry.prompt,
+                metadata=dict(entry.metadata),
+                retrieval_path="lattice_exact",
+                latency_ms=(time.time() - t0) * 1000,
+            )
+
+        # Hamming-NN path: opt-in, off by default. WARNING: false-positive risk in dense caches
+        # with adjacent-but-distinct prompts (see threshold calibration notes in hamming_router.py).
+        if self._hamming_router is not None and self.hamming_router_mode in ("serve", "shadow"):
+            router_result = self._hamming_router.lookup_key(
+                lattice_key, threshold=self._hamming_threshold
+            )
+            if router_result is not None:
+                nn_entry = self._entries.get(router_result.value)
+                if nn_entry is not None:
+                    if self.hamming_router_mode == "serve":
+                        return SemanticCacheResult(
+                            hit=True,
+                            hit_type="hamming_nn",
+                            value=nn_entry.value,
+                            cache_id=nn_entry.cache_id,
+                            lattice_key=lattice_key,
+                            source_prompt=nn_entry.prompt,
+                            metadata=dict(nn_entry.metadata),
+                            retrieval_path="hamming_nn",
+                            latency_ms=(time.time() - t0) * 1000,
+                            hamming_distance=router_result.hamming_distance,
+                        )
+                    else:  # shadow mode
+                        return SemanticCacheResult(
+                            hit=False,
+                            hit_type="miss",
+                            value=None,
+                            cache_id=None,
+                            lattice_key=lattice_key,
+                            retrieval_path="miss",
+                            latency_ms=(time.time() - t0) * 1000,
+                            hamming_distance=-1,
+                            shadow_hit=True,
+                            shadow_cache_id=nn_entry.cache_id,
+                            shadow_hamming_distance=router_result.hamming_distance,
+                            shadow_source_prompt=nn_entry.prompt,
+                            shadow_value=nn_entry.value,
+                        )
+
+        # Legacy memory.retrieve() path: preserves allow_neighborhood=True behavior
         query = MemoryQuery(
             text=prompt,
             embedding=embedding,
@@ -172,7 +253,7 @@ class RFSnapSemanticCache:
         )
 
     def stats(self) -> dict:
-        return {
+        base: dict[str, Any] = {
             "entries": self.size,
             "allow_neighborhood": self.allow_neighborhood,
             "product": self.product,
@@ -180,6 +261,15 @@ class RFSnapSemanticCache:
             "index_id": self.index_id,
             "memory": self.runtime.memory.stats(),
         }
+        if self._hamming_router is not None:
+            base["hamming_router"] = {
+                "enabled": True,
+                "threshold": self._hamming_threshold,
+                "entries": len(self._hamming_router),
+            }
+        else:
+            base["hamming_router"] = {"enabled": False}
+        return base
 
     def _entry_to_document(self, entry: SemanticCacheEntry, embedding):
         from .memory import MemoryDocument

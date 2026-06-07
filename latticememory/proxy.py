@@ -1,14 +1,19 @@
 import os
 import time
 import json
+import warnings
 import hashlib
 import inspect
+import logging
 from collections.abc import Callable
 from typing import Any
 
 from latticememory.memory import RFSnapLatticeMemory
 from latticememory.semantic_cache import RFSnapSemanticCache
 from latticememory.text_runtime import RFSnapTextMemory
+from latticememory.hamming_router import validate_calibration_data_schema
+
+logger = logging.getLogger("latticememory.proxy")
 
 
 def _require_fastapi():
@@ -39,6 +44,13 @@ class LatticeLLMProxy:
         upstream_client: UpstreamClient | None = None,
         cost_per_1k_input_tokens_usd: float = 0.005,
         batch_size: int = 64,
+        # Hamming-NN approximate cache (off by default — calibrate threshold before enabling)
+        enable_hamming_router: bool | None = None,
+        hamming_router_mode: str | None = None,
+        hamming_threshold: int = 70,
+        calibration_data_path: str | None = None,
+        fp_budget: float = 0.0,
+        require_calibration: bool = False,
         # Compliance & Canonicalization Extensions
         compliance_mode: bool = False,
         validation_required: bool = False,
@@ -60,8 +72,31 @@ class LatticeLLMProxy:
         self.audit_events: list[dict[str, Any]] = []
         self._last_audit_hash: str = "0000000000000000000000000000000000000000000000000000000000000000"
 
+        # Resolve compatibility between enable_hamming_router and hamming_router_mode
+        if enable_hamming_router is not None and hamming_router_mode is not None:
+            if enable_hamming_router is True and hamming_router_mode != "serve":
+                raise ValueError(
+                    f"Conflict: enable_hamming_router=True but hamming_router_mode={hamming_router_mode!r}. "
+                    "Use only hamming_router_mode."
+                )
+            if enable_hamming_router is False and hamming_router_mode != "off":
+                raise ValueError(
+                    f"Conflict: enable_hamming_router=False but hamming_router_mode={hamming_router_mode!r}. "
+                    "Use only hamming_router_mode."
+                )
+
+        if hamming_router_mode is not None:
+            if hamming_router_mode not in ("off", "shadow", "serve"):
+                raise ValueError(f"Invalid hamming_router_mode: {hamming_router_mode}")
+            self.hamming_router_mode = hamming_router_mode
+        elif enable_hamming_router is not None:
+            self.hamming_router_mode = "serve" if enable_hamming_router else "off"
+        else:
+            self.hamming_router_mode = "off"
+
         if semantic_cache is not None:
             self.cache = semantic_cache
+            self.cache.hamming_router_mode = self.hamming_router_mode
         else:
             runtime = self._build_runtime(
                 encoder=encoder,
@@ -70,7 +105,126 @@ class LatticeLLMProxy:
                 sqlite_path=sqlite_path,
                 batch_size=batch_size,
             )
-            self.cache = RFSnapSemanticCache(runtime=runtime)
+            hamming_router = None
+            if self.hamming_router_mode in ("serve", "shadow"):
+                from latticememory.hamming_router import HammingRouter
+                hamming_router = HammingRouter(
+                    encoder=runtime.encoder,
+                    d_model=runtime.d_model,
+                    threshold=hamming_threshold,
+                )
+            self.cache = RFSnapSemanticCache(
+                runtime=runtime,
+                hamming_router=hamming_router,
+                hamming_threshold=hamming_threshold,
+                hamming_router_mode=self.hamming_router_mode,
+            )
+
+        # Calibration state telemetry
+        self.hamming_router_calibrated = False
+        self.hamming_router_recall = 0.0
+        self.hamming_router_fp_rate = 0.0
+        self.hamming_router_fp_budget = float(fp_budget)
+        self.hamming_router_n_paraphrase_pairs = 0
+        self.hamming_router_n_near_miss_pairs = 0
+        self.hamming_router_encoder_model = getattr(self.cache.runtime, "model_id", None) or self.encoder_model
+        self.hamming_router_encoder_dimension = getattr(self.cache.runtime, "d_model", None)
+        self.hamming_router_calibration_file_hash = None
+        self.hamming_router_calibration_timestamp = None
+
+        # Handle calibration if calibration data is provided
+        if calibration_data_path is not None:
+            router = getattr(self.cache, "_hamming_router", None)
+            if router is None:
+                if require_calibration:
+                    raise ValueError(
+                        "Calibration requested (require_calibration=True) but no Hamming router "
+                        "is configured on the semantic cache."
+                    )
+                # Fail closed: disable router and warn
+                msg = "Optional Hamming router calibration requested but no Hamming router is configured. Disabling approximate cache."
+                logger.warning(msg)
+                warnings.warn(msg, category=UserWarning, stacklevel=2)
+                self.cache._hamming_router = None
+            else:
+                try:
+                    if not os.path.exists(calibration_data_path):
+                        raise ValueError(f"Calibration file does not exist: {calibration_data_path}")
+                    with open(calibration_data_path, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+
+                    # Determine file type and calibrate/load
+                    if isinstance(data, dict) and data.get("artifact_type") == "latticememory_hamming_calibration":
+                        from latticememory.hamming_router import (
+                            validate_precalibrated_artifact_schema,
+                        )
+                        validate_precalibrated_artifact_schema(data)
+
+                        # Validate version lock
+                        cal_model = data["model"]
+                        proxy_model = self.hamming_router_encoder_model
+                        cal_dim = data["d_model"]
+                        proxy_dim = self.hamming_router_encoder_dimension
+
+                        if cal_model != proxy_model or cal_dim != proxy_dim:
+                            raise ValueError(
+                                f"Calibration version lock mismatch: proxy model/dimension is "
+                                f"'{proxy_model}' (dim {proxy_dim}) but calibration file was built "
+                                f"for model '{cal_model}' (dim {cal_dim})."
+                            )
+
+                        cal_threshold = data["calibration"]["threshold"]
+                        if cal_threshold == -1:
+                            raise ValueError("Calibration file contains an invalid threshold (-1).")
+
+                        self.cache._hamming_threshold = cal_threshold
+                        router.threshold = cal_threshold
+                        self.hamming_router_calibrated = True
+                        self.hamming_router_recall = data["calibration"]["recall"]
+                        self.hamming_router_fp_rate = data["calibration"]["fp_rate"]
+                        self.hamming_router_fp_budget = data["fp_budget"]
+                        self.hamming_router_n_paraphrase_pairs = data["calibration"]["n_paraphrase_pairs"]
+                        self.hamming_router_n_near_miss_pairs = data["calibration"]["n_near_miss_pairs"]
+                        self.hamming_router_calibration_file_hash = data["calibration_data_sha256"]
+                        # Convert ISO timestamp or retrieve timestamp
+                        self.hamming_router_calibration_timestamp = data.get("created_at") or time.time()
+                    else:
+                        from latticememory.hamming_router import compute_calibration_data_sha256
+                        validate_calibration_data_schema(data)
+                        paraphrases = data["paraphrases"]
+                        near_misses = data["near_misses"]
+
+                        # Run calibration
+                        cal = router.calibrate_threshold(
+                            paraphrases, near_misses, fp_budget=self.hamming_router_fp_budget
+                        )
+                        cal_threshold = cal["threshold"]
+                        if cal_threshold == -1:
+                            raise ValueError("Calibration failed to find a valid threshold satisfying the FP budget.")
+
+                        # Update threshold in cache and router
+                        self.cache._hamming_threshold = cal_threshold
+                        router.threshold = cal_threshold
+
+                        # Record telemetry
+                        self.hamming_router_calibrated = True
+                        self.hamming_router_recall = cal["recall"]
+                        self.hamming_router_fp_rate = cal["fp_rate"]
+                        self.hamming_router_n_paraphrase_pairs = len(paraphrases)
+                        self.hamming_router_n_near_miss_pairs = len(near_misses)
+                        self.hamming_router_calibration_file_hash = compute_calibration_data_sha256(data)
+                        self.hamming_router_calibration_timestamp = time.time()
+
+                except Exception as exc:
+                    if require_calibration:
+                        raise ValueError(f"Hamming router calibration failed: {str(exc)}") from exc
+                    # Fail closed: disable router, reset mode to off, and warn
+                    msg = f"Optional Hamming router calibration failed: {exc}. Disabling Hamming router."
+                    logger.warning(msg)
+                    warnings.warn(msg, category=UserWarning, stacklevel=2)
+                    self.hamming_router_mode = "off"
+                    self.cache.hamming_router_mode = "off"
+                    self.cache._hamming_router = None
 
         # Initialize/Restore Audit Trail
         if self.audit_log_path:
@@ -145,11 +299,32 @@ class LatticeLLMProxy:
         @app.get("/health")
         async def health(request: Request) -> dict[str, Any]:
             proxy: LatticeLLMProxy = request.app.state.proxy
+            router_active = getattr(proxy.cache, "_hamming_router", None) is not None
+            is_reliable = (
+                proxy.hamming_router_n_paraphrase_pairs >= 100
+                and proxy.hamming_router_n_near_miss_pairs >= 100
+            )
             return {
                 "status": "healthy",
                 "service": "latticememory-proxy",
                 "cache_entries": proxy.cache.size,
                 "compliance_mode": proxy.compliance_mode,
+                "hamming_router": {
+                    "enabled": router_active,
+                    "mode": proxy.hamming_router_mode,
+                    "threshold": int(proxy.cache._hamming_threshold) if router_active else None,
+                    "calibrated": proxy.hamming_router_calibrated if router_active else False,
+                    "recall": float(proxy.hamming_router_recall) if router_active else 0.0,
+                    "fp_rate": float(proxy.hamming_router_fp_rate) if router_active else 0.0,
+                    "fp_budget": float(proxy.hamming_router_fp_budget) if router_active else 0.0,
+                    "n_paraphrase_pairs": int(proxy.hamming_router_n_paraphrase_pairs) if router_active else 0,
+                    "n_near_miss_pairs": int(proxy.hamming_router_n_near_miss_pairs) if router_active else 0,
+                    "reliable": is_reliable if router_active else False,
+                    "encoder_model": proxy.hamming_router_encoder_model,
+                    "encoder_dimension": proxy.hamming_router_encoder_dimension,
+                    "calibration_file_hash": proxy.hamming_router_calibration_file_hash,
+                    "calibration_timestamp": proxy.hamming_router_calibration_timestamp,
+                }
             }
 
         @app.post("/v1/chat/completions")
@@ -257,6 +432,7 @@ class LatticeLLMProxy:
                             ),
                             "X-Lattice-Compliance": "DIVERGENCE_REVIEW_REQUIRED",
                             "X-Lattice-Audit-Hash": evt["hash"],
+                            "X-Lattice-Hamming-Distance": str(cached.hamming_distance),
                         }
                         return JSONResponse(content=cached.value, headers=headers)
 
@@ -275,10 +451,24 @@ class LatticeLLMProxy:
                     ),
                     "X-Lattice-Compliance": "APPROVED" if proxy.compliance_mode else "NONE",
                     "X-Lattice-Audit-Hash": evt["hash"],
+                    "X-Lattice-Hamming-Distance": str(cached.hamming_distance),
                 }
                 return JSONResponse(content=cached.value, headers=headers)
 
-            # Absolute Cache Miss
+            # Absolute Cache Miss or Shadow Hit
+            if cached.shadow_hit:
+                # Log the shadow hit event in the audit trail but do not serve it
+                proxy._log_audit_event(
+                    event_type="SHADOW_HIT",
+                    prompt=prompt,
+                    key_hex=key_hex,
+                    response_text=proxy._extract_response_text(cached.shadow_value),
+                    extra={
+                        "hamming_distance": cached.shadow_hamming_distance,
+                        "threshold": proxy.cache._hamming_threshold,
+                    }
+                )
+
             upstream_body = await proxy._call_upstream(payload)
             response_text = proxy._extract_response_text(upstream_body)
 
@@ -302,11 +492,14 @@ class LatticeLLMProxy:
 
             headers = {
                 "X-Lattice-Cache": "MISS",
-                "X-Lattice-Retrieval-Path": "miss",
+                "X-Lattice-Retrieval-Path": "shadow_match_miss" if cached.shadow_hit else "miss",
                 "X-Lattice-Savings-USD": "0.000000",
                 "X-Lattice-Compliance": "PENDING_VALIDATION" if proxy.compliance_mode else "NONE",
                 "X-Lattice-Audit-Hash": evt["hash"],
             }
+            if cached.shadow_hit:
+                headers["X-Lattice-Shadow-Hit"] = "true"
+                headers["X-Lattice-Shadow-Distance"] = str(cached.shadow_shadow_hamming_distance if hasattr(cached, "shadow_shadow_hamming_distance") else cached.shadow_hamming_distance)
             return JSONResponse(content=upstream_body, headers=headers)
 
         @app.post("/v1/compliance/validate")

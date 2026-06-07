@@ -206,3 +206,21 @@ def test_diagnose_msmarco_smoke(tmp_path):
     with unittest.mock.patch("sys.argv", mock_argv):
         exit_code = main()
         assert exit_code == 0
+
+
+def test_hamming_router_benchmark_load_pairs_selects_requested_key(tmp_path):
+    from benchmarks.benchmark_hamming_router import load_pairs
+
+    pairs_path = tmp_path / "pairs.json"
+    pairs_path.write_text(
+        json.dumps(
+            {
+                "paraphrases": [["same a", "same b"]],
+                "near_misses": [["near a", "near b"]],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert load_pairs(str(pairs_path), key="paraphrases") == [("same a", "same b")]
+    assert load_pairs(str(pairs_path), key="near_misses") == [("near a", "near b")]

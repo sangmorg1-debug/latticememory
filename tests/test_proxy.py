@@ -53,6 +53,23 @@ def _request(prompt: str) -> dict:
     }
 
 
+class HashEncoder:
+    """MD5-hash deterministic encoder — same text → same vector, different text → different vector."""
+
+    def __init__(self, d_model: int = 384):
+        self.d_model = d_model
+
+    def encode(self, sentences, batch_size: int = 64, **kwargs):
+        vectors = []
+        for s in sentences:
+            seed = int(hashlib.md5(str(s).encode()).hexdigest(), 16) % (2**31)
+            rng = np.random.default_rng(seed)
+            v = rng.standard_normal(self.d_model).astype(np.float32)
+            v /= np.linalg.norm(v) + 1e-9
+            vectors.append(v)
+        return np.stack(vectors)
+
+
 def test_chat_completion_miss_calls_upstream_and_sets_miss_header():
     upstream = FakeUpstream()
     proxy = LatticeLLMProxy(
@@ -224,4 +241,453 @@ def test_divergence_detection():
     res2 = client.post("/v1/chat/completions", json=_request("What is the capital of France?"))
     assert res2.headers["X-Lattice-Cache"] == "HIT_DIVERGED"
     assert res2.headers["X-Lattice-Compliance"] == "DIVERGENCE_REVIEW_REQUIRED"
+    assert res2.headers["X-Lattice-Hamming-Distance"] == "-1"
+
+
+def test_hamming_router_disabled_by_default_gives_paraphrase_miss():
+    """With enable_hamming_router=False (default), distinct prompts that don't share an E8 key miss."""
+    upstream = FakeUpstream()
+    proxy = LatticeLLMProxy(
+        upstream_url="https://example.test/v1/chat/completions",
+        encoder=HashEncoder(384),
+        d_model=384,
+        upstream_client=upstream,
+        # enable_hamming_router defaults to False
+    )
+    client = TestClient(proxy.create_app())
+
+    client.post("/v1/chat/completions", json=_request("What is the capital of France?"))
+    res = client.post("/v1/chat/completions", json=_request("Which city is France's capital?"))
+
+    # Different text → different E8 key → no router → miss
+    assert res.headers["X-Lattice-Cache"] == "MISS"
+    assert upstream.calls == 2
+
+
+def test_hamming_router_enabled_returns_hamming_nn_hit():
+    """With enable_hamming_router=True and threshold=128, any stored entry matches any query."""
+    upstream = FakeUpstream()
+    proxy = LatticeLLMProxy(
+        upstream_url="https://example.test/v1/chat/completions",
+        encoder=HashEncoder(384),
+        d_model=384,
+        upstream_client=upstream,
+        enable_hamming_router=True,
+        hamming_threshold=128,  # always hit — exercises the Hamming-NN code path
+    )
+    client = TestClient(proxy.create_app())
+
+    # Seed with one prompt
+    client.post("/v1/chat/completions", json=_request("What is the capital of France?"))
+    # Query with a different prompt — threshold=128 guarantees a hit
+    res = client.post("/v1/chat/completions", json=_request("Which city is France's capital?"))
+
+    assert res.headers["X-Lattice-Cache"] == "HIT"
+    assert res.headers["X-Lattice-Retrieval-Path"] == "hamming_nn"
+    assert int(res.headers["X-Lattice-Hamming-Distance"]) >= 0
+    assert upstream.calls == 1  # no second upstream call
+
+
+def test_hamming_router_deduplicates_repeated_puts():
+    """Putting the same prompt multiple times adds it to the router only once."""
+    upstream = FakeUpstream()
+    proxy = LatticeLLMProxy(
+        upstream_url="https://example.test/v1/chat/completions",
+        encoder=HashEncoder(384),
+        d_model=384,
+        upstream_client=upstream,
+        enable_hamming_router=True,
+        hamming_threshold=128,
+    )
+    client = TestClient(proxy.create_app())
+
+    for _ in range(3):
+        client.post("/v1/chat/completions", json=_request("What is the capital of France?"))
+
+    router = proxy.cache._hamming_router
+    assert router is not None
+    assert len(router) == 1  # deduplicated: 3 puts → 1 router entry
+
+
+def test_proxy_calibration_success(tmp_path):
+    import json
+    data_path = tmp_path / "calibration.json"
+    data = {
+        "paraphrases": [
+            ["What is the capital of France?", "What is the capital of France?"],
+            ["Which city is France's capital?", "What is the capital of France?"]
+        ],
+        "near_misses": [
+            ["What is the capital of France?", "Reset my password"],
+            ["Which city is France's capital?", "Reset my password"]
+        ]
+    }
+    data_path.write_text(json.dumps(data), encoding="utf-8")
+
+    upstream = FakeUpstream()
+    proxy = LatticeLLMProxy(
+        upstream_url="https://example.test/v1/chat/completions",
+        encoder=HashEncoder(384),
+        d_model=384,
+        upstream_client=upstream,
+        enable_hamming_router=True,
+        calibration_data_path=str(data_path),
+        fp_budget=0.1,
+    )
+    assert proxy.hamming_router_calibrated is True
+    assert proxy.hamming_router_n_paraphrase_pairs == 2
+    assert proxy.hamming_router_n_near_miss_pairs == 2
+    assert proxy.cache._hamming_threshold >= 0
+
+    client = TestClient(proxy.create_app())
+    health_res = client.get("/health")
+    assert health_res.status_code == 200
+    health_data = health_res.json()
+    assert health_data["hamming_router"]["enabled"] is True
+    assert health_data["hamming_router"]["calibrated"] is True
+    assert health_data["hamming_router"]["threshold"] == proxy.cache._hamming_threshold
+    assert health_data["hamming_router"]["fp_budget"] == 0.1
+    assert health_data["hamming_router"]["n_paraphrase_pairs"] == 2
+    assert health_data["hamming_router"]["n_near_miss_pairs"] == 2
+    assert health_data["hamming_router"]["reliable"] is False  # Below 100 pairs
+
+
+def test_proxy_calibration_schema_validation(tmp_path):
+    import json
+    import pytest
+    data_path = tmp_path / "invalid_calibration.json"
+    
+    # 1. Invalid dict structure
+    data_path.write_text(json.dumps(["not", "a", "dict"]), encoding="utf-8")
+    with pytest.raises(ValueError, match="Calibration JSON must be a dictionary"):
+        LatticeLLMProxy(
+            upstream_url="https://example.test/v1/chat/completions",
+            encoder=HashEncoder(384),
+            d_model=384,
+            enable_hamming_router=True,
+            calibration_data_path=str(data_path),
+            require_calibration=True,
+        )
+
+    # 2. Missing keys
+    data_path.write_text(json.dumps({"paraphrases": []}), encoding="utf-8")
+    with pytest.raises(ValueError, match="must contain both 'paraphrases' and 'near_misses'"):
+        LatticeLLMProxy(
+            upstream_url="https://example.test/v1/chat/completions",
+            encoder=HashEncoder(384),
+            d_model=384,
+            enable_hamming_router=True,
+            calibration_data_path=str(data_path),
+            require_calibration=True,
+        )
+
+    # 3. Empty lists
+    data_path.write_text(json.dumps({"paraphrases": [], "near_misses": []}), encoding="utf-8")
+    with pytest.raises(ValueError, match="must contain at least 1 pair"):
+        LatticeLLMProxy(
+            upstream_url="https://example.test/v1/chat/completions",
+            encoder=HashEncoder(384),
+            d_model=384,
+            enable_hamming_router=True,
+            calibration_data_path=str(data_path),
+            require_calibration=True,
+        )
+
+    # 4. Invalid pair length
+    data_path.write_text(json.dumps({
+        "paraphrases": [["one text only"]],
+        "near_misses": [["one", "two"]]
+    }), encoding="utf-8")
+    with pytest.raises(ValueError, match="must be a pair of length 2"):
+        LatticeLLMProxy(
+            upstream_url="https://example.test/v1/chat/completions",
+            encoder=HashEncoder(384),
+            d_model=384,
+            enable_hamming_router=True,
+            calibration_data_path=str(data_path),
+            require_calibration=True,
+        )
+
+
+def test_proxy_calibration_fail_closed(tmp_path):
+    import pytest
+    import json
+    # Non-existent file
+    non_existent = tmp_path / "does_not_exist.json"
+
+    # With require_calibration=True -> Raises ValueError
+    with pytest.raises(ValueError, match="Calibration file does not exist"):
+        LatticeLLMProxy(
+            upstream_url="https://example.test/v1/chat/completions",
+            encoder=HashEncoder(384),
+            d_model=384,
+            enable_hamming_router=True,
+            calibration_data_path=str(non_existent),
+            require_calibration=True,
+        )
+
+    # With require_calibration=False -> Fails closed, disables router
+    proxy = LatticeLLMProxy(
+        upstream_url="https://example.test/v1/chat/completions",
+        encoder=HashEncoder(384),
+        d_model=384,
+        enable_hamming_router=True,
+        calibration_data_path=str(non_existent),
+        require_calibration=False,
+    )
+    assert proxy.cache._hamming_router is None
+    
+    client = TestClient(proxy.create_app())
+    health_res = client.get("/health")
+    assert health_res.json()["hamming_router"]["enabled"] is False
+    assert health_res.json()["hamming_router"]["threshold"] is None
+
+
+def test_proxy_calibration_injected_cache(tmp_path):
+    import json
+    import pytest
+    data_path = tmp_path / "calibration.json"
+    data = {
+        "paraphrases": [
+            ["What is the capital of France?", "What is the capital of France?"]
+        ],
+        "near_misses": [
+            ["What is the capital of France?", "Reset my password"]
+        ]
+    }
+    data_path.write_text(json.dumps(data), encoding="utf-8")
+
+    # Injected cache WITHOUT a router, require_calibration=True -> Raises
+    from latticememory.semantic_cache import RFSnapSemanticCache
+    from latticememory.text_runtime import RFSnapTextMemory
+    
+    runtime = RFSnapTextMemory(encoder=HashEncoder(384), d_model=384)
+    cache_no_router = RFSnapSemanticCache(runtime=runtime, hamming_router=None)
+    
+    with pytest.raises(ValueError, match="no Hamming router is configured"):
+        LatticeLLMProxy(
+            upstream_url="https://example.test/v1/chat/completions",
+            semantic_cache=cache_no_router,
+            calibration_data_path=str(data_path),
+            require_calibration=True,
+        )
+
+    # Injected cache WITH a router -> Successfully calibrates
+    from latticememory.hamming_router import HammingRouter
+    router = HammingRouter(encoder=runtime.encoder, d_model=runtime.d_model, threshold=70)
+    cache_with_router = RFSnapSemanticCache(runtime=runtime, hamming_router=router)
+    
+    proxy = LatticeLLMProxy(
+        upstream_url="https://example.test/v1/chat/completions",
+        semantic_cache=cache_with_router,
+        calibration_data_path=str(data_path),
+        require_calibration=True,
+    )
+    assert proxy.hamming_router_calibrated is True
+    assert proxy.cache._hamming_threshold == router.threshold
+
+
+def test_proxy_calibration_warnings(tmp_path):
+    import pytest
+    import warnings
+    # 1. Warning when no Hamming router configured but optional calibration requested
+    from latticememory.semantic_cache import RFSnapSemanticCache
+    from latticememory.text_runtime import RFSnapTextMemory
+    
+    runtime = RFSnapTextMemory(encoder=HashEncoder(384), d_model=384)
+    cache_no_router = RFSnapSemanticCache(runtime=runtime, hamming_router=None)
+    
+    data_path = tmp_path / "calibration.json"
+    data_path.write_text("{}", encoding="utf-8") # structure check is bypassed if router check fails
+    
+    with pytest.warns(UserWarning, match="no Hamming router is configured"):
+        proxy1 = LatticeLLMProxy(
+            upstream_url="https://example.test/v1/chat/completions",
+            semantic_cache=cache_no_router,
+            calibration_data_path=str(data_path),
+            require_calibration=False,
+        )
+    assert proxy1.cache._hamming_router is None
+
+    # 2. Warning when optional calibration fails
+    non_existent = tmp_path / "does_not_exist.json"
+    with pytest.warns(UserWarning, match="calibration failed"):
+        proxy2 = LatticeLLMProxy(
+            upstream_url="https://example.test/v1/chat/completions",
+            encoder=HashEncoder(384),
+            d_model=384,
+            enable_hamming_router=True,
+            calibration_data_path=str(non_existent),
+            require_calibration=False,
+        )
+    assert proxy2.cache._hamming_router is None
+
+
+def test_proxy_shadow_mode():
+    upstream = FakeUpstream()
+    proxy = LatticeLLMProxy(
+        upstream_url="https://example.test/v1/chat/completions",
+        encoder=HashEncoder(384),
+        d_model=384,
+        upstream_client=upstream,
+        hamming_router_mode="shadow",
+        hamming_threshold=128,  # very high to ensure hit
+    )
+    client = TestClient(proxy.create_app())
+
+    # 1. Populate the cache with a miss
+    r1 = client.post("/v1/chat/completions", json=_request("What is the capital of France?"))
+    assert r1.status_code == 200
+    assert r1.headers["X-Lattice-Cache"] == "MISS"
+    assert upstream.calls == 1
+
+    # 2. Query again using a paraphrase/same key. Since shadow mode is active, E8 matching triggers
+    # but still calls upstream (returns MISS, with shadow headers and shadow_hit in audit log)
+    r2 = client.post("/v1/chat/completions", json=_request("Which city is France's capital?"))
+    assert r2.status_code == 200
+    assert r2.headers["X-Lattice-Cache"] == "MISS"
+    assert r2.headers["X-Lattice-Shadow-Hit"] == "true"
+    assert "X-Lattice-Shadow-Distance" in r2.headers
+    assert upstream.calls == 2
+
+    # Check that a shadow hit audit event was logged
+    shadow_events = [e for e in proxy.audit_events if e["event_type"] == "SHADOW_HIT"]
+    assert len(shadow_events) == 1
+    assert shadow_events[0]["prompt"] == "Which city is France's capital?"
+
+
+def test_proxy_calibration_version_lock_success(tmp_path):
+    import json
+    data_path = tmp_path / "precalibrated.json"
+    artifact = {
+        "artifact_type": "latticememory_hamming_calibration",
+        "artifact_version": 1,
+        "model": "gpt-test-model-name",
+        "d_model": 384,
+        "calibration_data_sha256": "fake-sha256-string",
+        "created_at": "2026-06-07T12:00:00Z",
+        "fp_budget": 0.05,
+        "calibration": {
+            "threshold": 65,
+            "recall": 0.95,
+            "fp_rate": 0.01,
+            "n_paraphrase_pairs": 100,
+            "n_near_miss_pairs": 100
+        },
+        "gap_stats": {}
+    }
+    data_path.write_text(json.dumps(artifact), encoding="utf-8")
+
+    proxy = LatticeLLMProxy(
+        upstream_url="https://example.test/v1/chat/completions",
+        encoder_model="gpt-test-model-name",
+        encoder=HashEncoder(384),
+        d_model=384,
+        hamming_router_mode="serve",
+        calibration_data_path=str(data_path),
+        require_calibration=True,
+    )
+    assert proxy.hamming_router_calibrated is True
+    assert proxy.cache._hamming_threshold == 65
+    assert proxy.hamming_router_recall == 0.95
+    assert proxy.hamming_router_fp_rate == 0.01
+    assert proxy.hamming_router_fp_budget == 0.05
+    assert proxy.hamming_router_calibration_file_hash == "fake-sha256-string"
+
+
+def test_proxy_calibration_version_lock_mismatch_raise(tmp_path):
+    import json
+    import pytest
+    data_path = tmp_path / "precalibrated_mismatch.json"
+    artifact = {
+        "artifact_type": "latticememory_hamming_calibration",
+        "artifact_version": 1,
+        "model": "wrong-model-name",
+        "d_model": 384,
+        "calibration_data_sha256": "fake-sha256-string",
+        "created_at": "2026-06-07T12:00:00Z",
+        "fp_budget": 0.05,
+        "calibration": {
+            "threshold": 65,
+            "recall": 0.95,
+            "fp_rate": 0.01,
+            "n_paraphrase_pairs": 100,
+            "n_near_miss_pairs": 100
+        },
+        "gap_stats": {}
+    }
+    data_path.write_text(json.dumps(artifact), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Calibration version lock mismatch"):
+        LatticeLLMProxy(
+            upstream_url="https://example.test/v1/chat/completions",
+            encoder_model="gpt-test-model-name",
+            encoder=HashEncoder(384),
+            d_model=384,
+            hamming_router_mode="serve",
+            calibration_data_path=str(data_path),
+            require_calibration=True,
+        )
+
+
+def test_proxy_calibration_version_lock_mismatch_warn(tmp_path):
+    import json
+    import pytest
+    import warnings
+    data_path = tmp_path / "precalibrated_mismatch.json"
+    artifact = {
+        "artifact_type": "latticememory_hamming_calibration",
+        "artifact_version": 1,
+        "model": "wrong-model-name",
+        "d_model": 384,
+        "calibration_data_sha256": "fake-sha256-string",
+        "created_at": "2026-06-07T12:00:00Z",
+        "fp_budget": 0.05,
+        "calibration": {
+            "threshold": 65,
+            "recall": 0.95,
+            "fp_rate": 0.01,
+            "n_paraphrase_pairs": 100,
+            "n_near_miss_pairs": 100
+        },
+        "gap_stats": {}
+    }
+    data_path.write_text(json.dumps(artifact), encoding="utf-8")
+
+    with pytest.warns(UserWarning, match="Calibration version lock mismatch"):
+        proxy = LatticeLLMProxy(
+            upstream_url="https://example.test/v1/chat/completions",
+            encoder_model="gpt-test-model-name",
+            encoder=HashEncoder(384),
+            d_model=384,
+            hamming_router_mode="serve",
+            calibration_data_path=str(data_path),
+            require_calibration=False,
+        )
+    assert proxy.hamming_router_mode == "off"
+    assert proxy.cache.hamming_router_mode == "off"
+    assert proxy.cache._hamming_router is None
+
+
+def test_proxy_mode_override_conflict():
+    import pytest
+    with pytest.raises(ValueError, match="Conflict: enable_hamming_router=True"):
+        LatticeLLMProxy(
+            upstream_url="https://example.test/v1/chat/completions",
+            encoder=HashEncoder(384),
+            d_model=384,
+            enable_hamming_router=True,
+            hamming_router_mode="shadow",
+        )
+
+    with pytest.raises(ValueError, match="Conflict: enable_hamming_router=False"):
+        LatticeLLMProxy(
+            upstream_url="https://example.test/v1/chat/completions",
+            encoder=HashEncoder(384),
+            d_model=384,
+            enable_hamming_router=False,
+            hamming_router_mode="serve",
+        )
+
+
 

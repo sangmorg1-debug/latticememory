@@ -26,6 +26,7 @@ training = ["datasets>=2.0.0", "tqdm"]
 
 [project.scripts]
 latticememory-train-msmarco = "latticememory.train_msmarco:main"
+latticememory-calibrate-proxy = "latticememory.calibrate_proxy:main"
 
 [project.urls]
 Homepage = "https://github.com/sangmorg1-debug/e8-Project"
@@ -38,3 +39,6 @@ exclude = ["tests*", "docs*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "slow: marks tests that run the full training loop (deselect with -m 'not slow')",
+]
