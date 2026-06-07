@@ -345,3 +345,52 @@ def test_recall_zero_fp_budget_metrics_choose_best_threshold():
     assert result["1.0"]["threshold"] == 40
     assert result["1.0"]["recall"] == 1.0
     assert result["1.0"]["fp_rate"] == 1.0
+
+
+def test_block_failure_audit_counts_false_negative_and_confusion_blocks():
+    from benchmarks.benchmark_block_failure_audit import block_failure_summary
+
+    paraphrase_rows = [
+        {
+            "a": "same 1",
+            "b": "same 2",
+            "hamming": 2,
+            "diff_blocks": [1, 3],
+        },
+        {
+            "a": "same 3",
+            "b": "same 4",
+            "hamming": 1,
+            "diff_blocks": [3],
+        },
+    ]
+    near_miss_rows = [
+        {
+            "a": "near 1",
+            "b": "near 2",
+            "hamming": 1,
+            "diff_blocks": [1],
+        },
+        {
+            "a": "near 3",
+            "b": "near 4",
+            "hamming": 4,
+            "diff_blocks": [4, 5, 6, 7],
+        },
+    ]
+
+    summary = block_failure_summary(
+        paraphrase_rows=paraphrase_rows,
+        near_miss_rows=near_miss_rows,
+        threshold=1,
+        n_blocks=8,
+        closest_near_miss_count=1,
+    )
+
+    assert summary["false_negative_count"] == 1
+    assert summary["near_miss_confusion_count"] == 1
+    assert summary["closest_near_miss_count"] == 1
+    assert summary["false_negative_blocks"][0]["block"] == 1
+    assert summary["false_negative_blocks"][0]["count"] == 1
+    assert summary["stable_but_confusing_blocks"][0]["block"] == 0
+    assert summary["closest_near_miss_same_blocks"][0]["block"] == 0
