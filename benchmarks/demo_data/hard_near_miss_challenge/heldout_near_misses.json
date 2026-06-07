@@ -1,0 +1,124 @@
+{
+  "near_misses": [
+    [
+      "How can I end my membership?",
+      "Can I suspend billing for a while?"
+    ],
+    [
+      "Cancel my monthly service",
+      "I want to pause instead of cancel"
+    ],
+    [
+      "How do I request a refund?",
+      "Where is my return?"
+    ],
+    [
+      "Can I get my money back?",
+      "Track my returned item"
+    ],
+    [
+      "I want a refund for my payment",
+      "Has my return been received?"
+    ],
+    [
+      "I forgot my password",
+      "Change the email on my account"
+    ],
+    [
+      "Send me a password reset",
+      "I need to use a different login email"
+    ],
+    [
+      "I cannot remember my login password",
+      "How do I replace my account email?"
+    ],
+    [
+      "Help me reset account password",
+      "Switch my email address"
+    ],
+    [
+      "Where is my order?",
+      "Update the shipping address"
+    ],
+    [
+      "Where is my shipment?",
+      "I entered the wrong shipping address"
+    ],
+    [
+      "How do I get a copy of my invoice?",
+      "Change my credit card"
+    ],
+    [
+      "Download my receipt",
+      "Update billing card"
+    ],
+    [
+      "Where can I find my invoice?",
+      "Use a different payment method"
+    ],
+    [
+      "I need a copy of my bill",
+      "Replace my card on file"
+    ],
+    [
+      "Delete all my account data",
+      "Can I turn off my account for now?"
+    ],
+    [
+      "Close my account forever",
+      "Disable account access"
+    ],
+    [
+      "I want my account erased",
+      "Make my account inactive"
+    ],
+    [
+      "How do I cancel my subscription?",
+      "Can I get my money back?"
+    ],
+    [
+      "I want to cancel my plan",
+      "I want a refund for my payment"
+    ],
+    [
+      "How do I pause my subscription?",
+      "Change my credit card"
+    ],
+    [
+      "Can I temporarily stop my plan?",
+      "Update billing card"
+    ],
+    [
+      "Pause my monthly subscription",
+      "Use a different payment method"
+    ],
+    [
+      "Put my membership on hold",
+      "Replace my card on file"
+    ],
+    [
+      "Can I suspend billing for a while?",
+      "Edit payment details"
+    ],
+    [
+      "Shipping status for my order",
+      "Check the status of my return shipment"
+    ],
+    [
+      "Where is my shipment?",
+      "Did you get my returned package?"
+    ],
+    [
+      "How do I change my account email?",
+      "Permanently remove my account"
+    ],
+    [
+      "Update my email address",
+      "Delete all my account data"
+    ],
+    [
+      "Change the email on my account",
+      "Close my account forever"
+    ]
+  ]
+}

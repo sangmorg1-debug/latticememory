@@ -299,3 +299,49 @@ def test_render_hamming_router_results_page_contains_key_metrics():
     assert "87.5%" in html
     assert "0.0%" in html
     assert "demo-model" in html
+
+
+def test_hard_near_miss_challenge_has_safety_shape(tmp_path):
+    from benchmarks.hard_near_miss_challenge import build_challenge_dataset, write_challenge_dataset
+
+    dataset = build_challenge_dataset()
+    assert dataset["domain"] == "hard_customer_support_near_misses"
+    assert len(dataset["intents"]) >= 12
+    assert len(dataset["paraphrases"]) >= 60
+    assert len(dataset["near_misses"]) >= 40
+
+    pair_text = {" || ".join(pair) for pair in dataset["near_misses"]}
+    assert any("cancel" in text and "pause" in text for text in pair_text)
+    assert any("refund" in text and "return" in text for text in pair_text)
+    assert any("password" in text and "email" in text for text in pair_text)
+
+    paths = write_challenge_dataset(tmp_path)
+    calibration = json.loads(paths["calibration"].read_text(encoding="utf-8"))
+    heldout_para = json.loads(paths["heldout_paraphrases"].read_text(encoding="utf-8"))
+    heldout_near = json.loads(paths["heldout_near_misses"].read_text(encoding="utf-8"))
+
+    assert calibration["paraphrases"]
+    assert calibration["near_misses"]
+    assert heldout_para["paraphrases"]
+    assert heldout_near["near_misses"]
+
+
+def test_recall_zero_fp_budget_metrics_choose_best_threshold():
+    from benchmarks.benchmark_recall_zero_fp import recall_at_fp_budgets
+
+    result = recall_at_fp_budgets(
+        paraphrase_dists=[10, 12, 14, 30],
+        near_miss_dists=[20, 25, 35, 40],
+        fp_budgets=[0.0, 0.25, 1.0],
+        max_threshold=40,
+    )
+
+    assert result["0.0"]["threshold"] == 19
+    assert result["0.0"]["recall"] == 0.75
+    assert result["0.0"]["fp_rate"] == 0.0
+    assert result["0.25"]["threshold"] == 24
+    assert result["0.25"]["recall"] == 0.75
+    assert result["0.25"]["fp_rate"] == 0.25
+    assert result["1.0"]["threshold"] == 40
+    assert result["1.0"]["recall"] == 1.0
+    assert result["1.0"]["fp_rate"] == 1.0

@@ -1,0 +1,775 @@
+{
+  "artifact_type": "latticememory_hard_near_miss_challenge",
+  "artifact_version": 1,
+  "domain": "hard_customer_support_near_misses",
+  "intents": [
+    {
+      "intent_id": "cancel_subscription",
+      "canonical": "How do I cancel my subscription?",
+      "answer": "You can cancel from billing settings. Access remains active until the end of the paid period.",
+      "paraphrases": [
+        "I want to cancel my plan",
+        "Stop my subscription renewal",
+        "How can I end my membership?",
+        "Cancel my monthly service",
+        "Turn off my subscription",
+        "I need to stop being charged for my plan",
+        "End my paid account",
+        "Please cancel my recurring plan"
+      ]
+    },
+    {
+      "intent_id": "pause_subscription",
+      "canonical": "How do I pause my subscription?",
+      "answer": "You can pause eligible plans from billing settings and resume later without creating a new account.",
+      "paraphrases": [
+        "Can I temporarily stop my plan?",
+        "Pause my monthly subscription",
+        "Put my membership on hold",
+        "Can I suspend billing for a while?",
+        "I want to pause instead of cancel",
+        "Freeze my subscription for a month",
+        "Stop my plan temporarily",
+        "Can I hold my account without deleting it?"
+      ]
+    },
+    {
+      "intent_id": "refund_request",
+      "canonical": "How do I request a refund?",
+      "answer": "Refund requests can be submitted from the order or billing page and are reviewed under the refund policy.",
+      "paraphrases": [
+        "Can I get my money back?",
+        "I want a refund for my payment",
+        "How do I ask for a charge refund?",
+        "Refund my order",
+        "Please return my payment",
+        "I was charged and need a refund",
+        "Where do I submit a refund request?",
+        "Can you reverse this charge?"
+      ]
+    },
+    {
+      "intent_id": "return_status",
+      "canonical": "How do I check my return status?",
+      "answer": "Return status is available from the returns page using your order number or account order history.",
+      "paraphrases": [
+        "Where is my return?",
+        "Track my returned item",
+        "Has my return been received?",
+        "Check the status of my return shipment",
+        "Did you get my returned package?",
+        "Return tracking update",
+        "What happened to my return?",
+        "Is my return processed yet?"
+      ]
+    },
+    {
+      "intent_id": "reset_password",
+      "canonical": "How do I reset my password?",
+      "answer": "Use the password reset link on the sign-in page and follow the email instructions.",
+      "paraphrases": [
+        "I forgot my password",
+        "Send me a password reset",
+        "I cannot remember my login password",
+        "Help me reset account password",
+        "Password recovery help",
+        "How do I create a new password?",
+        "I need a reset link",
+        "Forgot password for my account"
+      ]
+    },
+    {
+      "intent_id": "change_email",
+      "canonical": "How do I change my account email?",
+      "answer": "Account email changes can be made from profile settings and may require verification of both addresses.",
+      "paraphrases": [
+        "Update my email address",
+        "Change the email on my account",
+        "I need to use a different login email",
+        "How do I replace my account email?",
+        "Switch my email address",
+        "Edit my profile email",
+        "Use a new email for my account",
+        "Change where account emails go"
+      ]
+    },
+    {
+      "intent_id": "shipping_status",
+      "canonical": "Where is my order?",
+      "answer": "Order tracking is available from your order history or the shipping confirmation email.",
+      "paraphrases": [
+        "Track my package",
+        "When will my order arrive?",
+        "Shipping status for my order",
+        "Where is my shipment?",
+        "Delivery tracking update",
+        "Has my package shipped?",
+        "Check order delivery status",
+        "Find my package location"
+      ]
+    },
+    {
+      "intent_id": "change_delivery_address",
+      "canonical": "How do I change my delivery address?",
+      "answer": "Delivery address changes are available before shipment from the order details page.",
+      "paraphrases": [
+        "Update the shipping address",
+        "Send my order to a different address",
+        "Can I change where my package goes?",
+        "Fix the delivery address",
+        "I entered the wrong shipping address",
+        "Change address before it ships",
+        "Redirect my package",
+        "Edit my order address"
+      ]
+    },
+    {
+      "intent_id": "invoice_copy",
+      "canonical": "How do I get a copy of my invoice?",
+      "answer": "Invoices can be downloaded from billing history in your account.",
+      "paraphrases": [
+        "Download my receipt",
+        "Where can I find my invoice?",
+        "I need a copy of my bill",
+        "Send me my payment receipt",
+        "Get invoice for my subscription",
+        "Print my billing invoice",
+        "Where is my receipt?",
+        "Can I download last month's invoice?"
+      ]
+    },
+    {
+      "intent_id": "update_payment_method",
+      "canonical": "How do I update my payment method?",
+      "answer": "You can update cards or payment details from billing settings before the next renewal.",
+      "paraphrases": [
+        "Change my credit card",
+        "Update billing card",
+        "Use a different payment method",
+        "Replace my card on file",
+        "Edit payment details",
+        "Add a new billing card",
+        "How do I change payment info?",
+        "Update my subscription payment"
+      ]
+    },
+    {
+      "intent_id": "delete_account",
+      "canonical": "How do I delete my account?",
+      "answer": "Account deletion can be requested from privacy settings and may permanently remove account data.",
+      "paraphrases": [
+        "Permanently remove my account",
+        "Delete all my account data",
+        "Close my account forever",
+        "I want my account erased",
+        "Remove my profile permanently",
+        "Delete my user account",
+        "How do I erase my account?",
+        "Submit account deletion request"
+      ]
+    },
+    {
+      "intent_id": "deactivate_account",
+      "canonical": "How do I deactivate my account?",
+      "answer": "Deactivation hides or disables the account without necessarily deleting all data.",
+      "paraphrases": [
+        "Temporarily disable my account",
+        "Deactivate my profile",
+        "Can I turn off my account for now?",
+        "Disable account access",
+        "Make my account inactive",
+        "Suspend my account",
+        "Hide my account without deleting it",
+        "Deactivate instead of delete"
+      ]
+    }
+  ],
+  "paraphrases": [
+    [
+      "How do I cancel my subscription?",
+      "I want to cancel my plan"
+    ],
+    [
+      "How do I cancel my subscription?",
+      "Stop my subscription renewal"
+    ],
+    [
+      "How do I cancel my subscription?",
+      "How can I end my membership?"
+    ],
+    [
+      "How do I cancel my subscription?",
+      "Cancel my monthly service"
+    ],
+    [
+      "How do I cancel my subscription?",
+      "Turn off my subscription"
+    ],
+    [
+      "How do I cancel my subscription?",
+      "I need to stop being charged for my plan"
+    ],
+    [
+      "How do I cancel my subscription?",
+      "End my paid account"
+    ],
+    [
+      "How do I cancel my subscription?",
+      "Please cancel my recurring plan"
+    ],
+    [
+      "How do I pause my subscription?",
+      "Can I temporarily stop my plan?"
+    ],
+    [
+      "How do I pause my subscription?",
+      "Pause my monthly subscription"
+    ],
+    [
+      "How do I pause my subscription?",
+      "Put my membership on hold"
+    ],
+    [
+      "How do I pause my subscription?",
+      "Can I suspend billing for a while?"
+    ],
+    [
+      "How do I pause my subscription?",
+      "I want to pause instead of cancel"
+    ],
+    [
+      "How do I pause my subscription?",
+      "Freeze my subscription for a month"
+    ],
+    [
+      "How do I pause my subscription?",
+      "Stop my plan temporarily"
+    ],
+    [
+      "How do I pause my subscription?",
+      "Can I hold my account without deleting it?"
+    ],
+    [
+      "How do I request a refund?",
+      "Can I get my money back?"
+    ],
+    [
+      "How do I request a refund?",
+      "I want a refund for my payment"
+    ],
+    [
+      "How do I request a refund?",
+      "How do I ask for a charge refund?"
+    ],
+    [
+      "How do I request a refund?",
+      "Refund my order"
+    ],
+    [
+      "How do I request a refund?",
+      "Please return my payment"
+    ],
+    [
+      "How do I request a refund?",
+      "I was charged and need a refund"
+    ],
+    [
+      "How do I request a refund?",
+      "Where do I submit a refund request?"
+    ],
+    [
+      "How do I request a refund?",
+      "Can you reverse this charge?"
+    ],
+    [
+      "How do I check my return status?",
+      "Where is my return?"
+    ],
+    [
+      "How do I check my return status?",
+      "Track my returned item"
+    ],
+    [
+      "How do I check my return status?",
+      "Has my return been received?"
+    ],
+    [
+      "How do I check my return status?",
+      "Check the status of my return shipment"
+    ],
+    [
+      "How do I check my return status?",
+      "Did you get my returned package?"
+    ],
+    [
+      "How do I check my return status?",
+      "Return tracking update"
+    ],
+    [
+      "How do I check my return status?",
+      "What happened to my return?"
+    ],
+    [
+      "How do I check my return status?",
+      "Is my return processed yet?"
+    ],
+    [
+      "How do I reset my password?",
+      "I forgot my password"
+    ],
+    [
+      "How do I reset my password?",
+      "Send me a password reset"
+    ],
+    [
+      "How do I reset my password?",
+      "I cannot remember my login password"
+    ],
+    [
+      "How do I reset my password?",
+      "Help me reset account password"
+    ],
+    [
+      "How do I reset my password?",
+      "Password recovery help"
+    ],
+    [
+      "How do I reset my password?",
+      "How do I create a new password?"
+    ],
+    [
+      "How do I reset my password?",
+      "I need a reset link"
+    ],
+    [
+      "How do I reset my password?",
+      "Forgot password for my account"
+    ],
+    [
+      "How do I change my account email?",
+      "Update my email address"
+    ],
+    [
+      "How do I change my account email?",
+      "Change the email on my account"
+    ],
+    [
+      "How do I change my account email?",
+      "I need to use a different login email"
+    ],
+    [
+      "How do I change my account email?",
+      "How do I replace my account email?"
+    ],
+    [
+      "How do I change my account email?",
+      "Switch my email address"
+    ],
+    [
+      "How do I change my account email?",
+      "Edit my profile email"
+    ],
+    [
+      "How do I change my account email?",
+      "Use a new email for my account"
+    ],
+    [
+      "How do I change my account email?",
+      "Change where account emails go"
+    ],
+    [
+      "Where is my order?",
+      "Track my package"
+    ],
+    [
+      "Where is my order?",
+      "When will my order arrive?"
+    ],
+    [
+      "Where is my order?",
+      "Shipping status for my order"
+    ],
+    [
+      "Where is my order?",
+      "Where is my shipment?"
+    ],
+    [
+      "Where is my order?",
+      "Delivery tracking update"
+    ],
+    [
+      "Where is my order?",
+      "Has my package shipped?"
+    ],
+    [
+      "Where is my order?",
+      "Check order delivery status"
+    ],
+    [
+      "Where is my order?",
+      "Find my package location"
+    ],
+    [
+      "How do I change my delivery address?",
+      "Update the shipping address"
+    ],
+    [
+      "How do I change my delivery address?",
+      "Send my order to a different address"
+    ],
+    [
+      "How do I change my delivery address?",
+      "Can I change where my package goes?"
+    ],
+    [
+      "How do I change my delivery address?",
+      "Fix the delivery address"
+    ],
+    [
+      "How do I change my delivery address?",
+      "I entered the wrong shipping address"
+    ],
+    [
+      "How do I change my delivery address?",
+      "Change address before it ships"
+    ],
+    [
+      "How do I change my delivery address?",
+      "Redirect my package"
+    ],
+    [
+      "How do I change my delivery address?",
+      "Edit my order address"
+    ],
+    [
+      "How do I get a copy of my invoice?",
+      "Download my receipt"
+    ],
+    [
+      "How do I get a copy of my invoice?",
+      "Where can I find my invoice?"
+    ],
+    [
+      "How do I get a copy of my invoice?",
+      "I need a copy of my bill"
+    ],
+    [
+      "How do I get a copy of my invoice?",
+      "Send me my payment receipt"
+    ],
+    [
+      "How do I get a copy of my invoice?",
+      "Get invoice for my subscription"
+    ],
+    [
+      "How do I get a copy of my invoice?",
+      "Print my billing invoice"
+    ],
+    [
+      "How do I get a copy of my invoice?",
+      "Where is my receipt?"
+    ],
+    [
+      "How do I get a copy of my invoice?",
+      "Can I download last month's invoice?"
+    ],
+    [
+      "How do I update my payment method?",
+      "Change my credit card"
+    ],
+    [
+      "How do I update my payment method?",
+      "Update billing card"
+    ],
+    [
+      "How do I update my payment method?",
+      "Use a different payment method"
+    ],
+    [
+      "How do I update my payment method?",
+      "Replace my card on file"
+    ],
+    [
+      "How do I update my payment method?",
+      "Edit payment details"
+    ],
+    [
+      "How do I update my payment method?",
+      "Add a new billing card"
+    ],
+    [
+      "How do I update my payment method?",
+      "How do I change payment info?"
+    ],
+    [
+      "How do I update my payment method?",
+      "Update my subscription payment"
+    ],
+    [
+      "How do I delete my account?",
+      "Permanently remove my account"
+    ],
+    [
+      "How do I delete my account?",
+      "Delete all my account data"
+    ],
+    [
+      "How do I delete my account?",
+      "Close my account forever"
+    ],
+    [
+      "How do I delete my account?",
+      "I want my account erased"
+    ],
+    [
+      "How do I delete my account?",
+      "Remove my profile permanently"
+    ],
+    [
+      "How do I delete my account?",
+      "Delete my user account"
+    ],
+    [
+      "How do I delete my account?",
+      "How do I erase my account?"
+    ],
+    [
+      "How do I delete my account?",
+      "Submit account deletion request"
+    ],
+    [
+      "How do I deactivate my account?",
+      "Temporarily disable my account"
+    ],
+    [
+      "How do I deactivate my account?",
+      "Deactivate my profile"
+    ],
+    [
+      "How do I deactivate my account?",
+      "Can I turn off my account for now?"
+    ],
+    [
+      "How do I deactivate my account?",
+      "Disable account access"
+    ],
+    [
+      "How do I deactivate my account?",
+      "Make my account inactive"
+    ],
+    [
+      "How do I deactivate my account?",
+      "Suspend my account"
+    ],
+    [
+      "How do I deactivate my account?",
+      "Hide my account without deleting it"
+    ],
+    [
+      "How do I deactivate my account?",
+      "Deactivate instead of delete"
+    ]
+  ],
+  "near_misses": [
+    [
+      "How do I cancel my subscription?",
+      "Can I temporarily stop my plan?"
+    ],
+    [
+      "I want to cancel my plan",
+      "Pause my monthly subscription"
+    ],
+    [
+      "Stop my subscription renewal",
+      "Put my membership on hold"
+    ],
+    [
+      "How can I end my membership?",
+      "Can I suspend billing for a while?"
+    ],
+    [
+      "Cancel my monthly service",
+      "I want to pause instead of cancel"
+    ],
+    [
+      "How do I request a refund?",
+      "Where is my return?"
+    ],
+    [
+      "Can I get my money back?",
+      "Track my returned item"
+    ],
+    [
+      "I want a refund for my payment",
+      "Has my return been received?"
+    ],
+    [
+      "How do I ask for a charge refund?",
+      "Check the status of my return shipment"
+    ],
+    [
+      "Refund my order",
+      "Did you get my returned package?"
+    ],
+    [
+      "How do I reset my password?",
+      "Update my email address"
+    ],
+    [
+      "I forgot my password",
+      "Change the email on my account"
+    ],
+    [
+      "Send me a password reset",
+      "I need to use a different login email"
+    ],
+    [
+      "I cannot remember my login password",
+      "How do I replace my account email?"
+    ],
+    [
+      "Help me reset account password",
+      "Switch my email address"
+    ],
+    [
+      "Where is my order?",
+      "Update the shipping address"
+    ],
+    [
+      "Track my package",
+      "Send my order to a different address"
+    ],
+    [
+      "When will my order arrive?",
+      "Can I change where my package goes?"
+    ],
+    [
+      "Shipping status for my order",
+      "Fix the delivery address"
+    ],
+    [
+      "Where is my shipment?",
+      "I entered the wrong shipping address"
+    ],
+    [
+      "How do I get a copy of my invoice?",
+      "Change my credit card"
+    ],
+    [
+      "Download my receipt",
+      "Update billing card"
+    ],
+    [
+      "Where can I find my invoice?",
+      "Use a different payment method"
+    ],
+    [
+      "I need a copy of my bill",
+      "Replace my card on file"
+    ],
+    [
+      "Send me my payment receipt",
+      "Edit payment details"
+    ],
+    [
+      "How do I delete my account?",
+      "Temporarily disable my account"
+    ],
+    [
+      "Permanently remove my account",
+      "Deactivate my profile"
+    ],
+    [
+      "Delete all my account data",
+      "Can I turn off my account for now?"
+    ],
+    [
+      "Close my account forever",
+      "Disable account access"
+    ],
+    [
+      "I want my account erased",
+      "Make my account inactive"
+    ],
+    [
+      "How do I cancel my subscription?",
+      "Can I get my money back?"
+    ],
+    [
+      "I want to cancel my plan",
+      "I want a refund for my payment"
+    ],
+    [
+      "Stop my subscription renewal",
+      "How do I ask for a charge refund?"
+    ],
+    [
+      "How can I end my membership?",
+      "Refund my order"
+    ],
+    [
+      "Cancel my monthly service",
+      "Please return my payment"
+    ],
+    [
+      "How do I pause my subscription?",
+      "Change my credit card"
+    ],
+    [
+      "Can I temporarily stop my plan?",
+      "Update billing card"
+    ],
+    [
+      "Pause my monthly subscription",
+      "Use a different payment method"
+    ],
+    [
+      "Put my membership on hold",
+      "Replace my card on file"
+    ],
+    [
+      "Can I suspend billing for a while?",
+      "Edit payment details"
+    ],
+    [
+      "Where is my order?",
+      "Where is my return?"
+    ],
+    [
+      "Track my package",
+      "Track my returned item"
+    ],
+    [
+      "When will my order arrive?",
+      "Has my return been received?"
+    ],
+    [
+      "Shipping status for my order",
+      "Check the status of my return shipment"
+    ],
+    [
+      "Where is my shipment?",
+      "Did you get my returned package?"
+    ],
+    [
+      "How do I change my account email?",
+      "Permanently remove my account"
+    ],
+    [
+      "Update my email address",
+      "Delete all my account data"
+    ],
+    [
+      "Change the email on my account",
+      "Close my account forever"
+    ],
+    [
+      "I need to use a different login email",
+      "I want my account erased"
+    ],
+    [
+      "How do I replace my account email?",
+      "Remove my profile permanently"
+    ]
+  ]
+}

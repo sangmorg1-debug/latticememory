@@ -1,0 +1,104 @@
+{
+  "artifact_type": "latticememory_recall_at_zero_fp",
+  "artifact_version": 1,
+  "model": "dfrokido/bge-large-e8-snap",
+  "d_model": 1024,
+  "created_at": "2026-06-07T21:14:04.550378Z",
+  "calibration_data_sha256": "f6fbf8da570727a3232129d306b797f0e37de5a35c89f605ed830ba541ebc654",
+  "fp_budgets": [
+    0.0,
+    0.001,
+    0.01
+  ],
+  "budget_metrics": {
+    "0.0": {
+      "threshold": 102,
+      "recall": 0.4444,
+      "fp_rate": 0.0
+    },
+    "0.001": {
+      "threshold": 102,
+      "recall": 0.4444,
+      "fp_rate": 0.0
+    },
+    "0.01": {
+      "threshold": 102,
+      "recall": 0.4444,
+      "fp_rate": 0.0
+    }
+  },
+  "distributions": {
+    "paraphrase": {
+      "n": 36,
+      "min": 75,
+      "p5": 82.0,
+      "p50": 104.0,
+      "mean": 102.72,
+      "p95": 114.5,
+      "max": 118
+    },
+    "near_miss": {
+      "n": 30,
+      "min": 103,
+      "p5": 105.8,
+      "p50": 116.5,
+      "mean": 116.0,
+      "p95": 123.0,
+      "max": 124
+    }
+  },
+  "hamming_gap_p5_minus_p95": -8.7,
+  "false_negatives_at_zero_fp": [
+    {
+      "a": "How do I cancel my subscription?",
+      "b": "I need to stop being charged for my plan",
+      "hamming": 103
+    },
+    {
+      "a": "How do I cancel my subscription?",
+      "b": "End my paid account",
+      "hamming": 107
+    },
+    {
+      "a": "How do I pause my subscription?",
+      "b": "Freeze my subscription for a month",
+      "hamming": 105
+    },
+    {
+      "a": "How do I pause my subscription?",
+      "b": "Stop my plan temporarily",
+      "hamming": 111
+    },
+    {
+      "a": "How do I pause my subscription?",
+      "b": "Can I hold my account without deleting it?",
+      "hamming": 118
+    },
+    {
+      "a": "How do I request a refund?",
+      "b": "Can you reverse this charge?",
+      "hamming": 113
+    },
+    {
+      "a": "How do I check my return status?",
+      "b": "Return tracking update",
+      "hamming": 112
+    },
+    {
+      "a": "How do I check my return status?",
+      "b": "Is my return processed yet?",
+      "hamming": 107
+    },
+    {
+      "a": "How do I reset my password?",
+      "b": "I need a reset link",
+      "hamming": 111
+    },
+    {
+      "a": "How do I change my account email?",
+      "b": "Edit my profile email",
+      "hamming": 105
+    }
+  ],
+  "false_positives_at_zero_fp": []
+}
