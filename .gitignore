@@ -14,3 +14,6 @@ rust/target/
 node_modules/
 .DS_Store
 benchmarks/results/
+scratch/
+snap_v*/
+pre_training_snapshot.json
