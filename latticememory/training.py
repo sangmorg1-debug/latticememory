@@ -5,7 +5,7 @@ import json
 import time
 from collections import Counter
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable
 
@@ -40,6 +40,9 @@ class E8RoutingLossOutput:
     address: torch.Tensor
     hamming: torch.Tensor
     negative: torch.Tensor
+    near_miss: torch.Tensor
+    address_hinge: torch.Tensor
+    address_mse: torch.Tensor
 
 
 @dataclass(frozen=True)
@@ -74,6 +77,8 @@ class FullEncoderTrainResult:
     dataset_name: str | None = None
     dataset_config: str | None = None
     train_split: str | None = None
+    address_hinge_loss_history: list[float] = field(default_factory=list)
+    address_mse_loss_history: list[float] = field(default_factory=list)
 
 
 BUILTIN_STS_EXAMPLES: tuple[tuple[str, str, float], ...] = (
@@ -132,6 +137,60 @@ def build_msmarco_examples(
     return examples
 
 
+def build_canonical_cluster_examples(
+    examples: Sequence[RoutingTrainingExample],
+) -> list[RoutingTrainingExample]:
+    """Map positive targets to deterministic canonical nodes per paraphrase component.
+
+    Positive query-document pairs define an undirected graph. Each connected
+    component is treated as one paraphrase cluster. The canonical representative
+    is the highest-degree node in that component, with alphabetical order as a
+    deterministic tie-breaker. Queries and negatives are preserved; only the
+    positive target is replaced.
+    """
+    if not examples:
+        return []
+
+    adjacency: dict[str, set[str]] = {}
+    for example in examples:
+        query = str(example.query)
+        positive = str(example.positive)
+        adjacency.setdefault(query, set()).add(positive)
+        adjacency.setdefault(positive, set()).add(query)
+
+    canonical_by_node: dict[str, str] = {}
+    seen: set[str] = set()
+    for start in sorted(adjacency):
+        if start in seen:
+            continue
+        stack = [start]
+        component: list[str] = []
+        seen.add(start)
+        while stack:
+            node = stack.pop()
+            component.append(node)
+            for neighbor in sorted(adjacency[node], reverse=True):
+                if neighbor not in seen:
+                    seen.add(neighbor)
+                    stack.append(neighbor)
+
+        canonical = sorted(
+            component,
+            key=lambda node: (-len(adjacency[node]), node),
+        )[0]
+        for node in component:
+            canonical_by_node[node] = canonical
+
+    return [
+        RoutingTrainingExample(
+            query=example.query,
+            positive=canonical_by_node.get(str(example.positive), example.positive),
+            negatives=list(example.negatives),
+        )
+        for example in examples
+    ]
+
+
 def load_msmarco_examples(
     *,
     dataset_name: str = "microsoft/ms_marco",
@@ -171,6 +230,11 @@ class E8RoutingLoss(torch.nn.Module):
         lambda_address: float = 1.0,
         lambda_hamming: float = 0.0,
         lambda_negative: float = 1.0,
+        lambda_near_miss: float = 0.0,
+        near_miss_margin: float = 80.0,
+        lambda_address_hinge: float = 0.0,
+        address_hinge_margin: float = 0.2,
+        lambda_address_mse: float = 0.0,
     ):
         super().__init__()
         if d_model <= 0 or d_model % 8 != 0:
@@ -183,6 +247,11 @@ class E8RoutingLoss(torch.nn.Module):
         self.lambda_address = float(lambda_address)
         self.lambda_hamming = float(lambda_hamming)
         self.lambda_negative = float(lambda_negative)
+        self.lambda_near_miss = float(lambda_near_miss)
+        self.near_miss_margin = float(near_miss_margin)
+        self.lambda_address_hinge = float(lambda_address_hinge)
+        self.address_hinge_margin = float(address_hinge_margin)
+        self.lambda_address_mse = float(lambda_address_mse)
         self.register_buffer("codebook", lattice._codebook.float(), persistent=False)
 
     def forward(
@@ -202,25 +271,68 @@ class E8RoutingLoss(torch.nn.Module):
         labels = torch.arange(logits.shape[0], device=logits.device)
         contrastive = F.cross_entropy(logits, labels)
 
-        target_keys = self._target_keys(positive_embeddings.detach()).to(query_embeddings.device)
-        address = _e8_address_cross_entropy(
-            adapted_queries=query_embeddings,
-            target_keys=target_keys,
-            codebook=self.codebook,
-            temperature=self.temperature,
-        )
-        hamming = _e8_expected_hamming_loss(
-            adapted_queries=query_embeddings,
-            target_keys=target_keys,
-            codebook=self.codebook,
-            temperature=self.temperature,
-        )
+        if (self.lambda_address > 0 or 
+            self.lambda_hamming > 0 or 
+            self.lambda_address_hinge > 0 or 
+            self.lambda_address_mse > 0):
+            target_keys = self._target_keys(positive_embeddings.detach()).to(query_embeddings.device)
+        else:
+            target_keys = None
+
+        if self.lambda_address > 0:
+            address = _e8_address_cross_entropy(
+                adapted_queries=query_embeddings,
+                target_keys=target_keys,
+                codebook=self.codebook,
+                temperature=self.temperature,
+            )
+        else:
+            address = query_embeddings.sum() * 0.0
+
+        if self.lambda_hamming > 0:
+            hamming = _e8_expected_hamming_loss(
+                adapted_queries=query_embeddings,
+                target_keys=target_keys,
+                codebook=self.codebook,
+                temperature=self.temperature,
+            )
+        else:
+            hamming = query_embeddings.sum() * 0.0
+
+        if self.lambda_address_hinge > 0:
+            num_blocks = query_embeddings.shape[1] // 8
+            blocks = query_embeddings.reshape(query_embeddings.shape[0], num_blocks, 8)
+            block_vectors = F.normalize(blocks, dim=-1)
+            code_vectors = F.normalize(self.codebook.to(query_embeddings.device), dim=-1)
+            block_logits = torch.einsum("bnd,kd->bnk", block_vectors, code_vectors) / self.temperature
+            target_logits = block_logits.gather(2, target_keys.unsqueeze(-1)).squeeze(-1)
+            masked_logits = block_logits.clone()
+            masked_logits.scatter_(2, target_keys.unsqueeze(-1), -10000.0)
+            hardest_negative_logits = masked_logits.max(dim=-1)[0]
+            address_hinge = F.relu(hardest_negative_logits - target_logits + self.address_hinge_margin).mean()
+        else:
+            address_hinge = query_embeddings.sum() * 0.0
+
+        if self.lambda_address_mse > 0:
+            num_blocks = query_embeddings.shape[1] // 8
+            blocks = query_embeddings.reshape(query_embeddings.shape[0], num_blocks, 8)
+            block_vectors = F.normalize(blocks, dim=-1)
+            target_vectors = self.codebook[target_keys].to(query_embeddings.device)
+            target_vectors_norm = F.normalize(target_vectors, dim=-1)
+            address_mse = F.mse_loss(block_vectors, target_vectors_norm)
+        else:
+            address_mse = query_embeddings.sum() * 0.0
+
         negative = self._negative_loss(query_embeddings, positive_embeddings, negative_embeddings)
+        near_miss = self._near_miss_loss(query_embeddings, negative_embeddings)
         total = (
             contrastive
             + (self.lambda_address * address)
             + (self.lambda_hamming * hamming)
             + (self.lambda_negative * negative)
+            + (self.lambda_near_miss * near_miss)
+            + (self.lambda_address_hinge * address_hinge)
+            + (self.lambda_address_mse * address_mse)
         )
         return E8RoutingLossOutput(
             total=total,
@@ -228,6 +340,9 @@ class E8RoutingLoss(torch.nn.Module):
             address=address,
             hamming=hamming,
             negative=negative,
+            near_miss=near_miss,
+            address_hinge=address_hinge,
+            address_mse=address_mse,
         )
 
     def _target_keys(self, positive_embeddings: torch.Tensor) -> torch.Tensor:
@@ -258,6 +373,36 @@ class E8RoutingLoss(torch.nn.Module):
         positive_scores = (query_norm * positive_norm).sum(dim=-1) / self.temperature
         negative_scores = torch.einsum("bd,bnd->bn", query_norm, negative_norm) / self.temperature
         return F.softplus(negative_scores - positive_scores.unsqueeze(1)).mean()
+
+    def _near_miss_loss(
+        self,
+        query_embeddings: torch.Tensor,
+        negative_embeddings: torch.Tensor | None,
+    ) -> torch.Tensor:
+        if negative_embeddings is None or negative_embeddings.numel() == 0 or self.near_miss_margin <= 0:
+            return query_embeddings.sum() * 0.0
+        if negative_embeddings.dim() == 2:
+            negative_embeddings = negative_embeddings.unsqueeze(1)
+        if negative_embeddings.dim() != 3 or negative_embeddings.shape[0] != query_embeddings.shape[0]:
+            raise ValueError("negative_embeddings must have shape [batch, negatives, d_model]")
+        if negative_embeddings.shape[-1] != self.d_model:
+            raise ValueError(f"negative embeddings must have last dimension {self.d_model}")
+
+        bsz, n_neg, _ = negative_embeddings.shape
+        flat_negative = negative_embeddings.reshape(bsz * n_neg, self.d_model)
+        negative_keys = self._target_keys(flat_negative.detach()).to(query_embeddings.device)
+        negative_keys = negative_keys.reshape(bsz, n_neg, self.d_model // 8)
+
+        num_blocks = self.d_model // 8
+        blocks = query_embeddings.reshape(bsz, num_blocks, 8)
+        block_vectors = F.normalize(blocks, dim=-1)
+        code_vectors = F.normalize(self.codebook.to(query_embeddings.device), dim=-1)
+        logits = torch.einsum("bnd,kd->bnk", block_vectors, code_vectors) / self.temperature
+        probabilities = F.softmax(logits, dim=-1)
+        expanded = probabilities.unsqueeze(1).expand(-1, n_neg, -1, -1)
+        target_probability = expanded.gather(3, negative_keys.unsqueeze(-1)).squeeze(-1)
+        expected_hamming = (1.0 - target_probability).sum(dim=-1)
+        return F.relu(self.near_miss_margin - expected_hamming).mean()
 
 
 def train_lattice_adapter_from_examples(
@@ -354,6 +499,9 @@ def train_full_encoder_from_examples(
     dataset_config: str | None = None,
     train_split: str | None = None,
     checkpoint_dir: str | Path | None = None,
+    lambda_address_hinge: float = 0.0,
+    address_hinge_margin: float = 0.2,
+    lambda_address_mse: float = 0.0,
 ) -> FullEncoderTrainResult:
     """Fine-tune a trainable text encoder for direct E8 query-to-passage routing.
 
@@ -387,6 +535,9 @@ def train_full_encoder_from_examples(
         lambda_address=lambda_address,
         lambda_hamming=lambda_neighborhood,
         lambda_negative=lambda_hard,
+        lambda_address_hinge=lambda_address_hinge,
+        address_hinge_margin=address_hinge_margin,
+        lambda_address_mse=lambda_address_mse,
     ).to(train_device)
     parameters = [parameter for parameter in _encoder_parameters(encoder) if parameter.requires_grad]
     if not parameters:
@@ -420,6 +571,8 @@ def train_full_encoder_from_examples(
     address_loss_history: list[float] = []
     neighborhood_loss_history: list[float] = []
     negative_loss_history: list[float] = []
+    address_hinge_loss_history: list[float] = []
+    address_mse_loss_history: list[float] = []
     train_min_hamming_history: list[int] = []
     train_mean_hamming_history: list[float] = []
     train_lattice_route_rate_history: list[float] = []
@@ -436,6 +589,8 @@ def train_full_encoder_from_examples(
         epoch_address: list[float] = []
         epoch_hamming: list[float] = []
         epoch_negative: list[float] = []
+        epoch_address_hinge: list[float] = []
+        epoch_address_mse: list[float] = []
 
         for step, start in enumerate(range(0, n, batch_size), start=1):
             batch_idx = perm[start : start + batch_size]
@@ -482,6 +637,8 @@ def train_full_encoder_from_examples(
             epoch_address.append(float(output.address.detach()))
             epoch_hamming.append(float(output.hamming.detach()))
             epoch_negative.append(float(output.negative.detach()))
+            epoch_address_hinge.append(float(output.address_hinge.detach()))
+            epoch_address_mse.append(float(output.address_mse.detach()))
             if log_every_batches and (step % log_every_batches == 0 or step == total_batches):
                 elapsed = max(time.perf_counter() - epoch_started, 1e-9)
                 batches_per_sec = step / elapsed
@@ -511,6 +668,8 @@ def train_full_encoder_from_examples(
         address_loss_history.append(_mean(epoch_address))
         neighborhood_loss_history.append(_mean(epoch_hamming))
         negative_loss_history.append(_mean(epoch_negative))
+        address_hinge_loss_history.append(_mean(epoch_address_hinge))
+        address_mse_loss_history.append(_mean(epoch_address_mse))
 
         hamming_summary = _routing_hamming_summary_for_encoder(
             encoder=encoder,
@@ -572,6 +731,8 @@ def train_full_encoder_from_examples(
         dataset_name=dataset_name,
         dataset_config=dataset_config,
         train_split=train_split,
+        address_hinge_loss_history=address_hinge_loss_history,
+        address_mse_loss_history=address_mse_loss_history,
     )
 
 

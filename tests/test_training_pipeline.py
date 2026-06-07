@@ -8,6 +8,7 @@ from latticememory.training import (
     _main,
     _encode_trainable_texts,
     _move_features_to_device,
+    build_canonical_cluster_examples,
     build_msmarco_examples,
     evaluate_routing_examples,
     load_sts_examples,
@@ -143,6 +144,43 @@ def test_build_msmarco_examples_accepts_triplet_rows():
     ]
 
 
+def test_build_canonical_cluster_examples_maps_connected_components_to_highest_degree_node():
+    examples = [
+        RoutingTrainingExample("alpha one", "alpha two", ["unrelated alpha negative"]),
+        RoutingTrainingExample("alpha two", "alpha three", []),
+        RoutingTrainingExample("beta leaf one", "beta center", []),
+        RoutingTrainingExample("beta leaf two", "beta center", ["unrelated beta negative"]),
+    ]
+
+    canonicalized = build_canonical_cluster_examples(examples)
+
+    assert [example.positive for example in canonicalized] == [
+        "alpha two",
+        "alpha two",
+        "beta center",
+        "beta center",
+    ]
+    assert [example.query for example in canonicalized] == [example.query for example in examples]
+    assert canonicalized[0].negatives == ["unrelated alpha negative"]
+    assert canonicalized[3].negatives == ["unrelated beta negative"]
+
+
+def test_build_canonical_cluster_examples_uses_alphabetical_tie_breaker():
+    examples = [
+        RoutingTrainingExample("zeta phrase", "alpha phrase", []),
+        RoutingTrainingExample("standalone query", "standalone positive", []),
+    ]
+
+    canonicalized = build_canonical_cluster_examples(examples)
+
+    assert canonicalized[0].positive == "alpha phrase"
+    assert canonicalized[1].positive == "standalone positive"
+
+
+def test_build_canonical_cluster_examples_empty_input_returns_empty():
+    assert build_canonical_cluster_examples([]) == []
+
+
 def test_e8_routing_loss_backpropagates_to_query_embeddings():
     torch.manual_seed(7)
     query_embeddings = torch.randn(4, 16, requires_grad=True)
@@ -156,6 +194,76 @@ def test_e8_routing_loss_backpropagates_to_query_embeddings():
     assert output.total.item() > 0
     assert output.contrastive.item() > 0
     assert output.address.item() > 0
+    assert output.near_miss.item() >= 0
+    assert query_embeddings.grad is not None
+    assert torch.isfinite(query_embeddings.grad).all()
+
+
+def test_e8_routing_loss_near_miss_term_requires_negative_embeddings():
+    torch.manual_seed(11)
+    query_embeddings = torch.randn(4, 16, requires_grad=True)
+    positive_embeddings = torch.randn(4, 16)
+    negative_embeddings = torch.randn(4, 2, 16)
+    loss_fn = E8RoutingLoss(
+        d_model=16,
+        lambda_address=0.0,
+        lambda_hamming=0.0,
+        lambda_negative=0.0,
+        lambda_near_miss=2.0,
+        near_miss_margin=2.0,
+    )
+
+    without_negatives = loss_fn(query_embeddings, positive_embeddings, None)
+    with_negatives = loss_fn(query_embeddings, positive_embeddings, negative_embeddings)
+
+    assert without_negatives.near_miss.item() == 0.0
+    assert with_negatives.near_miss.item() >= 0.0
+    assert with_negatives.total.item() >= with_negatives.contrastive.item()
+
+
+def test_e8_routing_loss_near_miss_margin_zero_disables_penalty():
+    torch.manual_seed(13)
+    query_embeddings = torch.randn(4, 16)
+    positive_embeddings = torch.randn(4, 16)
+    negative_embeddings = torch.randn(4, 2, 16)
+    loss_fn = E8RoutingLoss(
+        d_model=16,
+        lambda_address=0.0,
+        lambda_hamming=0.0,
+        lambda_negative=0.0,
+        lambda_near_miss=5.0,
+        near_miss_margin=0.0,
+    )
+
+    output = loss_fn(query_embeddings, positive_embeddings, negative_embeddings)
+
+    assert output.near_miss.item() == 0.0
+    assert output.total.item() == output.contrastive.item()
+
+
+def test_e8_routing_loss_hinge_and_mse_objectives():
+    torch.manual_seed(42)
+    query_embeddings = torch.randn(4, 16, requires_grad=True)
+    positive_embeddings = query_embeddings.detach().clone() + 0.01 * torch.randn(4, 16)
+    negative_embeddings = torch.randn(4, 2, 16)
+
+    loss_fn = E8RoutingLoss(
+        d_model=16,
+        lambda_address=0.0,
+        lambda_hamming=0.0,
+        lambda_negative=0.0,
+        lambda_near_miss=0.0,
+        lambda_address_hinge=2.0,
+        address_hinge_margin=0.25,
+        lambda_address_mse=3.5,
+    )
+
+    output = loss_fn(query_embeddings, positive_embeddings, negative_embeddings)
+    assert output.address_hinge.item() >= 0.0
+    assert output.address_mse.item() >= 0.0
+    assert output.total.item() > 0.0
+
+    output.total.backward()
     assert query_embeddings.grad is not None
     assert torch.isfinite(query_embeddings.grad).all()
 

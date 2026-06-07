@@ -25,6 +25,15 @@ from .dual_encoder import (
 from .semantic_cache import RFSnapSemanticCache, SemanticCacheEntry, SemanticCacheResult
 from .text_runtime import RFSnapTextMemory, TextIndexResult
 from .index import LatticeIndex, LatticeStats, SearchResult
+from .observatory import LatticeObservatory
+from .snap_trainer import SnapTrainer, SnapTrainingConfig, SnapTrainResult, SnapEpochMetrics, SnapObsCheckpoint
+from .hamming_router import (
+    HammingRouter,
+    HammingMatch,
+    validate_calibration_data_schema,
+    compute_calibration_data_sha256,
+    validate_precalibrated_artifact_schema,
+)
 from .agent_memory import AgentEpisodicMemory
 from .dedup import LatticeDedup
 from .dns import CrossModelAligner
@@ -37,6 +46,7 @@ from .training import (
     E8RoutingLossOutput,
     LatticeRoutingTrainResult,
     RoutingTrainingExample,
+    build_canonical_cluster_examples,
     build_msmarco_examples,
     evaluate_routing_examples,
     load_msmarco_examples,
@@ -84,6 +94,7 @@ __all__ = [
     "ResidualMLPAdapterEncoder",
     "RetrievalEvent",
     "build_msmarco_examples",
+    "build_canonical_cluster_examples",
     "evaluate_routing_examples",
     "fit_lattice_dual_encoder",
     "load_msmarco_examples",
@@ -91,6 +102,17 @@ __all__ = [
     "train_lattice_contrastive_encoder",
     "train_lattice_adapter_from_examples",
     "LatticeIndex",
+    "LatticeObservatory",
     "LatticeStats",
     "SearchResult",
+    "SnapEpochMetrics",
+    "SnapObsCheckpoint",
+    "SnapTrainResult",
+    "SnapTrainer",
+    "SnapTrainingConfig",
+    "HammingRouter",
+    "HammingMatch",
+    "validate_calibration_data_schema",
+    "compute_calibration_data_sha256",
+    "validate_precalibrated_artifact_schema",
 ]

@@ -129,6 +129,11 @@ class LatticeIndex:
         emb = self._runtime._encode_texts([text])[0]
         return self._runtime.memory.lattice_key_for(emb).hex()
 
+    def observatory(self) -> "LatticeObservatory":
+        """Return a LatticeObservatory bound to this index for block-level analysis."""
+        from latticememory.observatory import LatticeObservatory
+        return LatticeObservatory(self)
+
     def stats(self) -> LatticeStats:
         docs = self._runtime.memory.num_documents
         e8_key_bytes = docs * (self._d_model // 8) * 3
