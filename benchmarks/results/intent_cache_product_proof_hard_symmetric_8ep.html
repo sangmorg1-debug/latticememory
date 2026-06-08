@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LatticeMemory Intent Cache Product Proof</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f7f8fa;
+      --ink: #14171f;
+      --muted: #5f6877;
+      --panel: #ffffff;
+      --line: #d9dee8;
+      --green: #1f8a4c;
+      --red: #b3261e;
+      --blue: #2358a5;
+    }
+    body {
+      margin: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      line-height: 1.45;
+    }
+    main {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 32px 20px 56px;
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 30px;
+      letter-spacing: 0;
+    }
+    h2 {
+      margin: 32px 0 12px;
+      font-size: 18px;
+      letter-spacing: 0;
+    }
+    .subtitle {
+      color: var(--muted);
+      margin: 0 0 24px;
+      max-width: 760px;
+    }
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      gap: 12px;
+    }
+    .metric {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+    }
+    .metric span {
+      display: block;
+      color: var(--muted);
+      font-size: 13px;
+      margin-bottom: 6px;
+    }
+    .metric strong {
+      font-size: 24px;
+    }
+    .pass {
+      color: var(--green);
+    }
+    .fail {
+      color: var(--red);
+    }
+    .verdict {
+      border-left: 5px solid var(--blue);
+      background: var(--panel);
+      padding: 16px;
+      margin-top: 20px;
+      border-radius: 6px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    th, td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+    }
+    th {
+      background: #eef2f7;
+      color: #303847;
+      font-weight: 700;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+    }
+    .small {
+      color: var(--muted);
+      font-size: 13px;
+    }
+    code {
+      background: #eef2f7;
+      padding: 2px 5px;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>LatticeMemory Intent Cache Product Proof</h1>
+    <p class="subtitle">
+      Product proof for a closed-set semantic cache: route prompts to approved answer intents while tracking held-out recall, wrong-route rate, hit-rate simulation, and latency.
+    </p>
+
+    <div class="metrics"><section class='metric'><span>Product Gate</span><strong>PASS</strong></section>
+<section class='metric'><span>Routing Rule</span><strong>nearest_centroid</strong></section>
+<section class='metric'><span>Held-out Recall</span><strong>88.9%</strong></section>
+<section class='metric'><span>Held-out FP Rate</span><strong>0.0%</strong></section>
+<section class='metric'><span>Recall at FP Budget</span><strong>n/a</strong></section>
+<section class='metric'><span>Cache Hit Simulation</span><strong>83.3%</strong></section>
+<section class='metric'><span>Mean Lookup Latency</span><strong>0.07 ms</strong></section>
+<section class='metric'><span>Stored Route Bytes</span><strong>49,152 bytes</strong></section>
+<section class='metric'><span>Calibration FP Budget</span><strong>0.0%</strong></section></div>
+
+    <section class="verdict">
+      <strong>Product read:</strong>
+      <span class="pass">
+        PASS
+      </span>
+      for <code>intent_recall_at_zero_wrong_routes</code>.
+      With rule <code>nearest_centroid</code>, this benchmark measured
+      <strong>88.9%</strong> held-out paraphrase recall and
+      <strong>0.0%</strong> held-out false-positive rate.
+      Exact same-cell snapping is <code>research_exact_snap</code>,
+      not required for this product gate.
+    </section>
+
+    <h2>Benchmark Context</h2>
+    <table>
+      <tr><th>Field</th><th>Value</th></tr>
+      <tr><td>Model</td><td>benchmarks\results\snap_product_gate_hard_symmetric_8ep\best_snap_encoder</td></tr>
+      <tr><td>Embedding dimension</td><td>1024</td></tr>
+      <tr><td>Created at</td><td>2026-06-08T02:37:41.390263Z</td></tr>
+      <tr><td>Calibration data hash</td><td><code>None</code></td></tr>
+      <tr><td>Cache simulation prompts</td><td>72</td></tr>
+      <tr><td>Product gate target</td><td>80.6%</td></tr>
+      <tr><td>Held-out threshold at FP budget</td><td>n/a</td></tr>
+      <tr><td>Held-out recall at FP budget</td><td>n/a</td></tr>
+      <tr><td>Held-out FP rate at budget threshold</td><td>n/a</td></tr>
+      <tr><td>Exact snapping required</td><td>False</td></tr>
+      <tr><td>Stored route bytes</td><td>49,152 bytes</td></tr>
+      <tr><td>Float32 equivalent bytes</td><td>49,152 bytes</td></tr>
+      <tr><td>Key-only compression vs float32</td><td>1.0x</td></tr>
+    </table>
+
+    <h2>Distance Distributions</h2>
+    <div class="grid">
+      <table>
+        <tr><th colspan="2">Paraphrase pairs</th></tr>
+        <tr><td>n</td><td>36</td></tr>
+      </table>
+      <table>
+        <tr><th colspan="2">Near-miss pairs</th></tr>
+        <tr><td>n</td><td>60</td></tr>
+      </table>
+    </div>
+
+    <h2>Threshold Curve Sample</h2>
+    <table>
+      <tr><th>Threshold</th><th>Recall</th><th>FP Rate</th></tr>
+      
+    </table>
+
+    <p class="small">
+      Generated from <code>latticememory_intent_cache_proof_results</code> artifact version
+      <code>1</code>.
+    </p>
+  </main>
+</body>
+</html>

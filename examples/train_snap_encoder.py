@@ -41,7 +41,22 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--data",
         default="paws",
-        choices=["paws", "qqp", "nli", "paws+qqp", "paws+nli", "paws+qqp+nli", "banking77", "clinc150", "banking77+clinc150", "val", "banking77+val"],
+        choices=[
+            "paws",
+            "qqp",
+            "nli",
+            "paws+qqp",
+            "paws+nli",
+            "paws+qqp+nli",
+            "banking77",
+            "clinc150",
+            "banking77+clinc150",
+            "val",
+            "banking77+val",
+            "hard-near-miss",
+            "banking77+hard-near-miss",
+            "banking77+val+hard-near-miss",
+        ],
         help="Training data source(s) (default: paws)",
     )
     p.add_argument(
@@ -267,6 +282,8 @@ def main() -> None:
             examples = trainer.load_clinc150(limit=args.limit)
         elif source == "val":
             examples = trainer.load_val_clusters()
+        elif source == "hard-near-miss":
+            examples = trainer.load_hard_near_miss_challenge(limit=args.limit)
         else:
             print(f"Unknown data source: {source}", file=sys.stderr)
             sys.exit(1)

@@ -1,0 +1,49 @@
+{
+  "artifact_type": "latticememory_intent_cache_proof_results",
+  "artifact_version": 1,
+  "cache_simulation": {
+    "hit_rate": 0.8333,
+    "hits": 60,
+    "misses": 12,
+    "total_prompts": 72
+  },
+  "calibrated_threshold": "nearest_centroid",
+  "created_at": "2026-06-08T02:37:41.390263Z",
+  "d_model": 1024,
+  "distributions": {
+    "near_miss": {
+      "n": 60
+    },
+    "paraphrase": {
+      "n": 36
+    }
+  },
+  "fp_budget": 0.0,
+  "index": {
+    "centroid_bytes": 49152,
+    "compression_vs_float32_keys_only": 1.0,
+    "float32_embedding_bytes_equivalent": 49152,
+    "n_intents": 12,
+    "stored_key_bytes": 49152
+  },
+  "metrics": {
+    "held_out_false_positives": 0,
+    "held_out_fp_rate": 0.0,
+    "held_out_recall": 0.8889,
+    "held_out_true_positives": 32,
+    "mean_latency_ms": 0.072,
+    "total_held_out_paraphrases": 36,
+    "total_near_miss_queries": 60
+  },
+  "model": "benchmarks\\results\\snap_product_gate_hard_symmetric_8ep\\best_snap_encoder",
+  "product_gate": {
+    "exact_snap_required": false,
+    "fp_budget": 0.0,
+    "fragmentation_metric_role": "research_exact_snap",
+    "name": "intent_recall_at_zero_wrong_routes",
+    "passed": true,
+    "recall_target": 0.8056
+  },
+  "route_type": "closed_set_intent_centroid_cache",
+  "threshold_curve": []
+}

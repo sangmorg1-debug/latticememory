@@ -226,6 +226,58 @@ def test_hamming_router_benchmark_load_pairs_selects_requested_key(tmp_path):
     assert load_pairs(str(pairs_path), key="near_misses") == [("near a", "near b")]
 
 
+def test_hamming_router_report_adds_product_gate_and_index_bytes():
+    from benchmarks.benchmark_hamming_router import build_product_proof_report, recall_at_fp_budget
+
+    report = build_product_proof_report(
+        model="demo-model",
+        d_model=1024,
+        calibration_sha="abc123",
+        fp_budget=0.0,
+        chosen_threshold=83,
+        calibration_results={
+            "threshold": 83,
+            "recall": 0.98,
+            "fp_rate": 0.0,
+            "fp_budget": 0.0,
+            "n_paraphrase_pairs": 100,
+            "n_near_miss_pairs": 100,
+        },
+        held_out_recall=0.98,
+        held_out_fp_rate=0.0,
+        held_out_tp=49,
+        held_out_fp=0,
+        para_stats={"n": 50, "mean": 60.0},
+        nm_stats={"n": 50, "mean": 95.0},
+        cache_hits=20,
+        cache_misses=30,
+        total_prompts=50,
+        cache_hit_rate=0.4,
+        mean_latency_ms=7.5,
+        n_cached_keys=100,
+        threshold_curve=[],
+        product_recall_target=0.8056,
+        held_out_budget_metrics=recall_at_fp_budget(
+            paraphrase_dists=[10, 12, 18],
+            near_miss_dists=[20, 40],
+            fp_budget=0.0,
+            max_threshold=40,
+        ),
+    )
+
+    assert report["product_gate"]["name"] == "recall_at_FP=0"
+    assert report["product_gate"]["passed"] is True
+    assert report["product_gate"]["recall_target"] == 0.8056
+    assert report["product_gate"]["exact_snap_required"] is False
+    assert report["metrics"]["held_out_true_positives"] == 49
+    assert report["metrics"]["held_out_false_positives"] == 0
+    assert report["metrics"]["held_out_recall_at_fp_budget"] == 1.0
+    assert report["metrics"]["held_out_threshold_at_fp_budget"] == 19
+    assert report["index"]["key_bytes_per_entry"] == 128
+    assert report["index"]["stored_key_bytes"] == 12800
+    assert report["index"]["float32_embedding_bytes_equivalent"] == 409600
+
+
 def test_nvidia_demo_dataset_split_writes_benchmark_inputs(tmp_path):
     from benchmarks.generate_nvidia_demo_dataset import write_demo_files
 
@@ -278,10 +330,20 @@ def test_render_hamming_router_results_page_contains_key_metrics():
             "calibration_data_sha256": "abc123",
             "fp_budget": 0.0,
             "calibrated_threshold": 64,
+            "product_gate": {
+                "name": "recall_at_FP=0",
+                "passed": True,
+                "recall_target": 0.8056,
+                "exact_snap_required": False,
+            },
             "metrics": {
                 "held_out_recall": 0.875,
                 "held_out_fp_rate": 0.0,
                 "mean_latency_ms": 12.34,
+            },
+            "index": {
+                "stored_key_bytes": 1280,
+                "compression_vs_float32_keys_only": 32.0,
             },
             "cache_simulation": {
                 "total_prompts": 10,
@@ -298,7 +360,37 @@ def test_render_hamming_router_results_page_contains_key_metrics():
     assert "LatticeMemory HammingRouter Demo" in html
     assert "87.5%" in html
     assert "0.0%" in html
+    assert "PASS" in html
+    assert "1,280 bytes" in html
     assert "demo-model" in html
+
+
+def test_intent_cache_product_report_passes_gate():
+    from benchmarks.benchmark_intent_cache_product_proof import build_intent_cache_report
+
+    report = build_intent_cache_report(
+        model="demo-model",
+        d_model=1024,
+        n_intents=12,
+        held_out_recall=0.8889,
+        held_out_wrong_route_rate=0.0,
+        held_out_correct=32,
+        held_out_wrong=0,
+        total_paraphrases=36,
+        total_near_miss_queries=60,
+        mean_latency_ms=2.5,
+        cache_hits=48,
+        cache_misses=24,
+        total_prompts=72,
+        product_recall_target=0.8056,
+    )
+
+    assert report["artifact_type"] == "latticememory_intent_cache_proof_results"
+    assert report["product_gate"]["passed"] is True
+    assert report["product_gate"]["name"] == "intent_recall_at_zero_wrong_routes"
+    assert report["metrics"]["held_out_recall"] == 0.8889
+    assert report["metrics"]["held_out_fp_rate"] == 0.0
+    assert report["index"]["centroid_bytes"] == 12 * 1024 * 4
 
 
 def test_hard_near_miss_challenge_has_safety_shape(tmp_path):
@@ -319,11 +411,14 @@ def test_hard_near_miss_challenge_has_safety_shape(tmp_path):
     calibration = json.loads(paths["calibration"].read_text(encoding="utf-8"))
     heldout_para = json.loads(paths["heldout_paraphrases"].read_text(encoding="utf-8"))
     heldout_near = json.loads(paths["heldout_near_misses"].read_text(encoding="utf-8"))
+    prompts = json.loads(paths["prompts_responses"].read_text(encoding="utf-8"))
 
     assert calibration["paraphrases"]
     assert calibration["near_misses"]
     assert heldout_para["paraphrases"]
     assert heldout_near["near_misses"]
+    assert len(prompts) >= len(dataset["intents"]) * 4
+    assert all("prompt" in row and "response" in row and "intent_id" in row for row in prompts)
 
 
 def test_recall_zero_fp_budget_metrics_choose_best_threshold():

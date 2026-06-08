@@ -656,6 +656,25 @@ def test_load_clinc150_mocked():
         assert all(neg in ["query X1", "query X2"] for neg in examples[2].negatives)
 
 
+def test_load_hard_near_miss_challenge_uses_calibration_pairs(tmp_path):
+    from benchmarks.hard_near_miss_challenge import write_challenge_dataset
+
+    paths = write_challenge_dataset(tmp_path)
+    trainer = SnapTrainer._from_encoder(
+        FakeEncoder(384), val_clusters={"dummy": ["dummy"]}, d_model=384
+    )
+
+    examples = trainer.load_hard_near_miss_challenge(paths["calibration"], limit=10)
+
+    assert examples
+    assert examples[0].query
+    assert examples[0].positive
+    assert examples[0].query != examples[0].positive
+    assert examples[0].negatives
+    assert all(isinstance(neg, str) and neg for neg in examples[0].negatives)
+    assert any(example.query == examples[0].positive and example.positive == examples[0].query for example in examples)
+
+
 def test_load_val_clusters():
     val_clusters = {
         "refund": ["refund A", "refund B"],

@@ -481,6 +481,55 @@ class SnapTrainer:
                     return examples
         return examples
 
+    def load_hard_near_miss_challenge(
+        self,
+        calibration_path: str | Path = "benchmarks/demo_data/hard_near_miss_challenge/calibration_data.json",
+        *,
+        limit: int | None = None,
+    ) -> list[RoutingTrainingExample]:
+        """Load built-in hard near-miss calibration pairs for product-gate tuning."""
+        data = json.loads(Path(calibration_path).read_text(encoding="utf-8"))
+        paraphrases = data.get("paraphrases", [])
+        near_misses = data.get("near_misses", [])
+        if not paraphrases:
+            raise ValueError("hard near-miss calibration data has no paraphrases")
+        if not near_misses:
+            raise ValueError("hard near-miss calibration data has no near_misses")
+
+        negative_pool: list[str] = []
+        for pair in near_misses:
+            if isinstance(pair, list) and len(pair) == 2:
+                negative_pool.extend([str(pair[0]), str(pair[1])])
+        negative_pool = list(dict.fromkeys(text for text in negative_pool if text))
+
+        examples: list[RoutingTrainingExample] = []
+        for idx, pair in enumerate(paraphrases):
+            if not isinstance(pair, list) or len(pair) != 2:
+                continue
+            canonical = str(pair[0])
+            paraphrase = str(pair[1])
+            negatives = [
+                text for text in negative_pool[idx % len(negative_pool):] + negative_pool[: idx % len(negative_pool)]
+                if text not in {canonical, paraphrase}
+            ][:3]
+            examples.append(
+                RoutingTrainingExample(
+                    query=paraphrase,
+                    positive=canonical,
+                    negatives=negatives,
+                )
+            )
+            examples.append(
+                RoutingTrainingExample(
+                    query=canonical,
+                    positive=paraphrase,
+                    negatives=negatives,
+                )
+            )
+            if limit and len(examples) >= limit:
+                return examples
+        return examples
+
     def load_val_clusters(self) -> list[RoutingTrainingExample]:
         """Convert the validation clusters (self.val_clusters) into training examples.
 

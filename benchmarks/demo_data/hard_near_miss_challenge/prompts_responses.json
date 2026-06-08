@@ -1,0 +1,362 @@
+[
+  {
+    "intent_id": "cancel_subscription",
+    "prompt": "How do I cancel my subscription?",
+    "response": "You can cancel from billing settings. Access remains active until the end of the paid period."
+  },
+  {
+    "intent_id": "cancel_subscription",
+    "prompt": "I want to cancel my plan",
+    "response": "You can cancel from billing settings. Access remains active until the end of the paid period."
+  },
+  {
+    "intent_id": "cancel_subscription",
+    "prompt": "Stop my subscription renewal",
+    "response": "You can cancel from billing settings. Access remains active until the end of the paid period."
+  },
+  {
+    "intent_id": "cancel_subscription",
+    "prompt": "How can I end my membership?",
+    "response": "You can cancel from billing settings. Access remains active until the end of the paid period."
+  },
+  {
+    "intent_id": "cancel_subscription",
+    "prompt": "Cancel my monthly service",
+    "response": "You can cancel from billing settings. Access remains active until the end of the paid period."
+  },
+  {
+    "intent_id": "cancel_subscription",
+    "prompt": "Turn off my subscription",
+    "response": "You can cancel from billing settings. Access remains active until the end of the paid period."
+  },
+  {
+    "intent_id": "pause_subscription",
+    "prompt": "How do I pause my subscription?",
+    "response": "You can pause eligible plans from billing settings and resume later without creating a new account."
+  },
+  {
+    "intent_id": "pause_subscription",
+    "prompt": "Can I temporarily stop my plan?",
+    "response": "You can pause eligible plans from billing settings and resume later without creating a new account."
+  },
+  {
+    "intent_id": "pause_subscription",
+    "prompt": "Pause my monthly subscription",
+    "response": "You can pause eligible plans from billing settings and resume later without creating a new account."
+  },
+  {
+    "intent_id": "pause_subscription",
+    "prompt": "Put my membership on hold",
+    "response": "You can pause eligible plans from billing settings and resume later without creating a new account."
+  },
+  {
+    "intent_id": "pause_subscription",
+    "prompt": "Can I suspend billing for a while?",
+    "response": "You can pause eligible plans from billing settings and resume later without creating a new account."
+  },
+  {
+    "intent_id": "pause_subscription",
+    "prompt": "I want to pause instead of cancel",
+    "response": "You can pause eligible plans from billing settings and resume later without creating a new account."
+  },
+  {
+    "intent_id": "refund_request",
+    "prompt": "How do I request a refund?",
+    "response": "Refund requests can be submitted from the order or billing page and are reviewed under the refund policy."
+  },
+  {
+    "intent_id": "refund_request",
+    "prompt": "Can I get my money back?",
+    "response": "Refund requests can be submitted from the order or billing page and are reviewed under the refund policy."
+  },
+  {
+    "intent_id": "refund_request",
+    "prompt": "I want a refund for my payment",
+    "response": "Refund requests can be submitted from the order or billing page and are reviewed under the refund policy."
+  },
+  {
+    "intent_id": "refund_request",
+    "prompt": "How do I ask for a charge refund?",
+    "response": "Refund requests can be submitted from the order or billing page and are reviewed under the refund policy."
+  },
+  {
+    "intent_id": "refund_request",
+    "prompt": "Refund my order",
+    "response": "Refund requests can be submitted from the order or billing page and are reviewed under the refund policy."
+  },
+  {
+    "intent_id": "refund_request",
+    "prompt": "Please return my payment",
+    "response": "Refund requests can be submitted from the order or billing page and are reviewed under the refund policy."
+  },
+  {
+    "intent_id": "return_status",
+    "prompt": "How do I check my return status?",
+    "response": "Return status is available from the returns page using your order number or account order history."
+  },
+  {
+    "intent_id": "return_status",
+    "prompt": "Where is my return?",
+    "response": "Return status is available from the returns page using your order number or account order history."
+  },
+  {
+    "intent_id": "return_status",
+    "prompt": "Track my returned item",
+    "response": "Return status is available from the returns page using your order number or account order history."
+  },
+  {
+    "intent_id": "return_status",
+    "prompt": "Has my return been received?",
+    "response": "Return status is available from the returns page using your order number or account order history."
+  },
+  {
+    "intent_id": "return_status",
+    "prompt": "Check the status of my return shipment",
+    "response": "Return status is available from the returns page using your order number or account order history."
+  },
+  {
+    "intent_id": "return_status",
+    "prompt": "Did you get my returned package?",
+    "response": "Return status is available from the returns page using your order number or account order history."
+  },
+  {
+    "intent_id": "reset_password",
+    "prompt": "How do I reset my password?",
+    "response": "Use the password reset link on the sign-in page and follow the email instructions."
+  },
+  {
+    "intent_id": "reset_password",
+    "prompt": "I forgot my password",
+    "response": "Use the password reset link on the sign-in page and follow the email instructions."
+  },
+  {
+    "intent_id": "reset_password",
+    "prompt": "Send me a password reset",
+    "response": "Use the password reset link on the sign-in page and follow the email instructions."
+  },
+  {
+    "intent_id": "reset_password",
+    "prompt": "I cannot remember my login password",
+    "response": "Use the password reset link on the sign-in page and follow the email instructions."
+  },
+  {
+    "intent_id": "reset_password",
+    "prompt": "Help me reset account password",
+    "response": "Use the password reset link on the sign-in page and follow the email instructions."
+  },
+  {
+    "intent_id": "reset_password",
+    "prompt": "Password recovery help",
+    "response": "Use the password reset link on the sign-in page and follow the email instructions."
+  },
+  {
+    "intent_id": "change_email",
+    "prompt": "How do I change my account email?",
+    "response": "Account email changes can be made from profile settings and may require verification of both addresses."
+  },
+  {
+    "intent_id": "change_email",
+    "prompt": "Update my email address",
+    "response": "Account email changes can be made from profile settings and may require verification of both addresses."
+  },
+  {
+    "intent_id": "change_email",
+    "prompt": "Change the email on my account",
+    "response": "Account email changes can be made from profile settings and may require verification of both addresses."
+  },
+  {
+    "intent_id": "change_email",
+    "prompt": "I need to use a different login email",
+    "response": "Account email changes can be made from profile settings and may require verification of both addresses."
+  },
+  {
+    "intent_id": "change_email",
+    "prompt": "How do I replace my account email?",
+    "response": "Account email changes can be made from profile settings and may require verification of both addresses."
+  },
+  {
+    "intent_id": "change_email",
+    "prompt": "Switch my email address",
+    "response": "Account email changes can be made from profile settings and may require verification of both addresses."
+  },
+  {
+    "intent_id": "shipping_status",
+    "prompt": "Where is my order?",
+    "response": "Order tracking is available from your order history or the shipping confirmation email."
+  },
+  {
+    "intent_id": "shipping_status",
+    "prompt": "Track my package",
+    "response": "Order tracking is available from your order history or the shipping confirmation email."
+  },
+  {
+    "intent_id": "shipping_status",
+    "prompt": "When will my order arrive?",
+    "response": "Order tracking is available from your order history or the shipping confirmation email."
+  },
+  {
+    "intent_id": "shipping_status",
+    "prompt": "Shipping status for my order",
+    "response": "Order tracking is available from your order history or the shipping confirmation email."
+  },
+  {
+    "intent_id": "shipping_status",
+    "prompt": "Where is my shipment?",
+    "response": "Order tracking is available from your order history or the shipping confirmation email."
+  },
+  {
+    "intent_id": "shipping_status",
+    "prompt": "Delivery tracking update",
+    "response": "Order tracking is available from your order history or the shipping confirmation email."
+  },
+  {
+    "intent_id": "change_delivery_address",
+    "prompt": "How do I change my delivery address?",
+    "response": "Delivery address changes are available before shipment from the order details page."
+  },
+  {
+    "intent_id": "change_delivery_address",
+    "prompt": "Update the shipping address",
+    "response": "Delivery address changes are available before shipment from the order details page."
+  },
+  {
+    "intent_id": "change_delivery_address",
+    "prompt": "Send my order to a different address",
+    "response": "Delivery address changes are available before shipment from the order details page."
+  },
+  {
+    "intent_id": "change_delivery_address",
+    "prompt": "Can I change where my package goes?",
+    "response": "Delivery address changes are available before shipment from the order details page."
+  },
+  {
+    "intent_id": "change_delivery_address",
+    "prompt": "Fix the delivery address",
+    "response": "Delivery address changes are available before shipment from the order details page."
+  },
+  {
+    "intent_id": "change_delivery_address",
+    "prompt": "I entered the wrong shipping address",
+    "response": "Delivery address changes are available before shipment from the order details page."
+  },
+  {
+    "intent_id": "invoice_copy",
+    "prompt": "How do I get a copy of my invoice?",
+    "response": "Invoices can be downloaded from billing history in your account."
+  },
+  {
+    "intent_id": "invoice_copy",
+    "prompt": "Download my receipt",
+    "response": "Invoices can be downloaded from billing history in your account."
+  },
+  {
+    "intent_id": "invoice_copy",
+    "prompt": "Where can I find my invoice?",
+    "response": "Invoices can be downloaded from billing history in your account."
+  },
+  {
+    "intent_id": "invoice_copy",
+    "prompt": "I need a copy of my bill",
+    "response": "Invoices can be downloaded from billing history in your account."
+  },
+  {
+    "intent_id": "invoice_copy",
+    "prompt": "Send me my payment receipt",
+    "response": "Invoices can be downloaded from billing history in your account."
+  },
+  {
+    "intent_id": "invoice_copy",
+    "prompt": "Get invoice for my subscription",
+    "response": "Invoices can be downloaded from billing history in your account."
+  },
+  {
+    "intent_id": "update_payment_method",
+    "prompt": "How do I update my payment method?",
+    "response": "You can update cards or payment details from billing settings before the next renewal."
+  },
+  {
+    "intent_id": "update_payment_method",
+    "prompt": "Change my credit card",
+    "response": "You can update cards or payment details from billing settings before the next renewal."
+  },
+  {
+    "intent_id": "update_payment_method",
+    "prompt": "Update billing card",
+    "response": "You can update cards or payment details from billing settings before the next renewal."
+  },
+  {
+    "intent_id": "update_payment_method",
+    "prompt": "Use a different payment method",
+    "response": "You can update cards or payment details from billing settings before the next renewal."
+  },
+  {
+    "intent_id": "update_payment_method",
+    "prompt": "Replace my card on file",
+    "response": "You can update cards or payment details from billing settings before the next renewal."
+  },
+  {
+    "intent_id": "update_payment_method",
+    "prompt": "Edit payment details",
+    "response": "You can update cards or payment details from billing settings before the next renewal."
+  },
+  {
+    "intent_id": "delete_account",
+    "prompt": "How do I delete my account?",
+    "response": "Account deletion can be requested from privacy settings and may permanently remove account data."
+  },
+  {
+    "intent_id": "delete_account",
+    "prompt": "Permanently remove my account",
+    "response": "Account deletion can be requested from privacy settings and may permanently remove account data."
+  },
+  {
+    "intent_id": "delete_account",
+    "prompt": "Delete all my account data",
+    "response": "Account deletion can be requested from privacy settings and may permanently remove account data."
+  },
+  {
+    "intent_id": "delete_account",
+    "prompt": "Close my account forever",
+    "response": "Account deletion can be requested from privacy settings and may permanently remove account data."
+  },
+  {
+    "intent_id": "delete_account",
+    "prompt": "I want my account erased",
+    "response": "Account deletion can be requested from privacy settings and may permanently remove account data."
+  },
+  {
+    "intent_id": "delete_account",
+    "prompt": "Remove my profile permanently",
+    "response": "Account deletion can be requested from privacy settings and may permanently remove account data."
+  },
+  {
+    "intent_id": "deactivate_account",
+    "prompt": "How do I deactivate my account?",
+    "response": "Deactivation hides or disables the account without necessarily deleting all data."
+  },
+  {
+    "intent_id": "deactivate_account",
+    "prompt": "Temporarily disable my account",
+    "response": "Deactivation hides or disables the account without necessarily deleting all data."
+  },
+  {
+    "intent_id": "deactivate_account",
+    "prompt": "Deactivate my profile",
+    "response": "Deactivation hides or disables the account without necessarily deleting all data."
+  },
+  {
+    "intent_id": "deactivate_account",
+    "prompt": "Can I turn off my account for now?",
+    "response": "Deactivation hides or disables the account without necessarily deleting all data."
+  },
+  {
+    "intent_id": "deactivate_account",
+    "prompt": "Disable account access",
+    "response": "Deactivation hides or disables the account without necessarily deleting all data."
+  },
+  {
+    "intent_id": "deactivate_account",
+    "prompt": "Make my account inactive",
+    "response": "Deactivation hides or disables the account without necessarily deleting all data."
+  }
+]

@@ -60,6 +60,120 @@ def load_pairs(path: str, *, key: str | None = None) -> list[tuple[str, str]]:
         raise ValueError(f"Invalid format in dataset file at {path}")
 
 
+def build_product_proof_report(
+    *,
+    model: str,
+    d_model: int,
+    calibration_sha: str,
+    fp_budget: float,
+    chosen_threshold: int,
+    calibration_results: dict,
+    held_out_recall: float,
+    held_out_fp_rate: float,
+    held_out_tp: int,
+    held_out_fp: int,
+    para_stats: dict,
+    nm_stats: dict,
+    cache_hits: int,
+    cache_misses: int,
+    total_prompts: int,
+    cache_hit_rate: float,
+    mean_latency_ms: float,
+    n_cached_keys: int,
+    threshold_curve: list[dict],
+    product_recall_target: float = 0.8056,
+    held_out_budget_metrics: dict | None = None,
+) -> dict:
+    key_bytes_per_entry = int(d_model // 8)
+    stored_key_bytes = int(n_cached_keys * key_bytes_per_entry)
+    float32_embedding_bytes = int(n_cached_keys * d_model * 4)
+    compression = (
+        round(float32_embedding_bytes / stored_key_bytes, 2)
+        if stored_key_bytes > 0
+        else 0.0
+    )
+    budget_recall = (held_out_budget_metrics or {}).get("recall", held_out_recall)
+    budget_fp_rate = (held_out_budget_metrics or {}).get("fp_rate", held_out_fp_rate)
+    product_gate_passed = (
+        budget_recall >= product_recall_target
+        and budget_fp_rate <= fp_budget
+    )
+
+    return {
+        "artifact_type": "latticememory_hamming_proof_results",
+        "artifact_version": 2,
+        "model": model,
+        "d_model": d_model,
+        "calibration_data_sha256": calibration_sha,
+        "created_at": datetime.datetime.utcnow().isoformat() + "Z",
+        "fp_budget": fp_budget,
+        "calibrated_threshold": chosen_threshold,
+        "calibration": calibration_results,
+        "product_gate": {
+            "name": "recall_at_FP=0" if fp_budget == 0 else "recall_at_FP_budget",
+            "passed": bool(product_gate_passed),
+            "recall_target": product_recall_target,
+            "fp_budget": fp_budget,
+            "exact_snap_required": False,
+            "fragmentation_metric_role": "research_exact_snap",
+        },
+        "metrics": {
+            "held_out_recall": round(held_out_recall, 4),
+            "held_out_fp_rate": round(held_out_fp_rate, 4),
+            "held_out_true_positives": int(held_out_tp),
+            "held_out_false_positives": int(held_out_fp),
+            "held_out_recall_at_fp_budget": (held_out_budget_metrics or {}).get("recall", 0.0),
+            "held_out_threshold_at_fp_budget": (held_out_budget_metrics or {}).get("threshold", -1),
+            "held_out_fp_rate_at_budget_threshold": (held_out_budget_metrics or {}).get("fp_rate", 0.0),
+            "mean_latency_ms": round(mean_latency_ms, 3),
+        },
+        "index": {
+            "n_cached_keys": int(n_cached_keys),
+            "key_bytes_per_entry": key_bytes_per_entry,
+            "stored_key_bytes": stored_key_bytes,
+            "float32_embedding_bytes_equivalent": float32_embedding_bytes,
+            "compression_vs_float32_keys_only": compression,
+        },
+        "distributions": {
+            "paraphrase": para_stats,
+            "near_miss": nm_stats,
+        },
+        "cache_simulation": {
+            "total_prompts": total_prompts,
+            "hits": cache_hits,
+            "misses": cache_misses,
+            "hit_rate": round(cache_hit_rate, 4),
+        },
+        "threshold_curve": threshold_curve,
+    }
+
+
+def recall_at_fp_budget(
+    *,
+    paraphrase_dists: list[int],
+    near_miss_dists: list[int],
+    fp_budget: float,
+    max_threshold: int,
+) -> dict:
+    if not paraphrase_dists or not near_miss_dists:
+        return {"threshold": -1, "recall": 0.0, "fp_rate": 0.0}
+    best = {"threshold": -1, "recall": 0.0, "fp_rate": 0.0}
+    for threshold in range(max_threshold + 1):
+        fp_count = sum(1 for dist in near_miss_dists if dist <= threshold)
+        fp_rate = fp_count / len(near_miss_dists)
+        if fp_rate > fp_budget:
+            continue
+        tp_count = sum(1 for dist in paraphrase_dists if dist <= threshold)
+        recall = tp_count / len(paraphrase_dists)
+        if recall >= best["recall"]:
+            best = {
+                "threshold": threshold,
+                "recall": round(recall, 4),
+                "fp_rate": round(fp_rate, 4),
+            }
+    return best
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description="HammingRouter Proof Benchmark")
     p.add_argument(
@@ -94,6 +208,12 @@ def main() -> None:
         "--output",
         default=os.path.join("benchmarks", "results", "hamming_router_proof_summary.json"),
         help="Path to write the JSON summary artifact",
+    )
+    p.add_argument(
+        "--product-recall-target",
+        type=float,
+        default=0.8056,
+        help="Required held-out recall at the FP budget for product-gate pass (default: 0.8056)",
     )
     args = p.parse_args()
 
@@ -182,6 +302,12 @@ def main() -> None:
             "recall": round(tp_t / len(para_dists), 4) if para_dists else 0.0,
             "fp_rate": round(fp_t / len(nm_dists), 4) if nm_dists else 0.0,
         })
+    held_out_budget_metrics = recall_at_fp_budget(
+        paraphrase_dists=para_dists,
+        near_miss_dists=nm_dists,
+        fp_budget=args.fp_budget,
+        max_threshold=n_blocks,
+    )
 
     # Cache simulation if prompts provided
     cache_hits = 0
@@ -264,32 +390,29 @@ def main() -> None:
     print("=======================================================")
 
     # Prepare JSON report
-    report = {
-        "artifact_type": "latticememory_hamming_proof_results",
-        "artifact_version": 1,
-        "model": args.model,
-        "d_model": router._d_model,
-        "calibration_data_sha256": calibration_sha,
-        "created_at": datetime.datetime.utcnow().isoformat() + "Z",
-        "fp_budget": args.fp_budget,
-        "calibrated_threshold": chosen_threshold,
-        "metrics": {
-            "held_out_recall": round(held_out_recall, 4),
-            "held_out_fp_rate": round(held_out_fp_rate, 4),
-            "mean_latency_ms": round(mean_latency_ms, 3),
-        },
-        "distributions": {
-            "paraphrase": para_stats,
-            "near_miss": nm_stats,
-        },
-        "cache_simulation": {
-            "total_prompts": total_prompts,
-            "hits": cache_hits,
-            "misses": cache_misses,
-            "hit_rate": round(cache_hit_rate, 4),
-        },
-        "threshold_curve": threshold_curve,
-    }
+    report = build_product_proof_report(
+        model=args.model,
+        d_model=router._d_model,
+        calibration_sha=calibration_sha,
+        fp_budget=args.fp_budget,
+        chosen_threshold=chosen_threshold,
+        calibration_results=cal_results,
+        held_out_recall=held_out_recall,
+        held_out_fp_rate=held_out_fp_rate,
+        held_out_tp=held_out_tp,
+        held_out_fp=held_out_fp,
+        para_stats=para_stats,
+        nm_stats=nm_stats,
+        cache_hits=cache_hits,
+        cache_misses=cache_misses,
+        total_prompts=total_prompts,
+        cache_hit_rate=cache_hit_rate,
+        mean_latency_ms=mean_latency_ms,
+        n_cached_keys=len(router),
+        threshold_curve=threshold_curve,
+        product_recall_target=args.product_recall_target,
+        held_out_budget_metrics=held_out_budget_metrics,
+    )
 
     # Write output
     out_dir = os.path.dirname(args.output)

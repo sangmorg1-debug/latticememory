@@ -243,6 +243,22 @@ def _split_pairs(pairs: list[list[str]], train_count: int) -> tuple[list[list[st
     return grouped_train, grouped_heldout
 
 
+def build_prompt_response_stream(dataset: dict[str, Any]) -> list[dict[str, str]]:
+    """Build a deterministic cache simulation stream from canonical answers."""
+    rows: list[dict[str, str]] = []
+    for intent in dataset["intents"]:
+        prompts = [intent["canonical"], *intent["paraphrases"][:5]]
+        for prompt in prompts:
+            rows.append(
+                {
+                    "intent_id": intent["intent_id"],
+                    "prompt": prompt,
+                    "response": intent["answer"],
+                }
+            )
+    return rows
+
+
 def write_challenge_dataset(output_dir: str | Path) -> dict[str, Path]:
     output = Path(output_dir)
     output.mkdir(parents=True, exist_ok=True)
@@ -255,6 +271,7 @@ def write_challenge_dataset(output_dir: str | Path) -> dict[str, Path]:
         "calibration": output / "calibration_data.json",
         "heldout_paraphrases": output / "heldout_paraphrases.json",
         "heldout_near_misses": output / "heldout_near_misses.json",
+        "prompts_responses": output / "prompts_responses.json",
     }
     paths["source"].write_text(json.dumps(dataset, indent=2), encoding="utf-8")
     paths["calibration"].write_text(
@@ -271,6 +288,10 @@ def write_challenge_dataset(output_dir: str | Path) -> dict[str, Path]:
     )
     paths["heldout_paraphrases"].write_text(json.dumps({"paraphrases": heldout_para}, indent=2), encoding="utf-8")
     paths["heldout_near_misses"].write_text(json.dumps({"near_misses": heldout_near}, indent=2), encoding="utf-8")
+    paths["prompts_responses"].write_text(
+        json.dumps(build_prompt_response_stream(dataset), indent=2),
+        encoding="utf-8",
+    )
     return paths
 
 

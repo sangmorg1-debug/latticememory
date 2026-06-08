@@ -20,10 +20,21 @@ def _num(value: Any) -> str:
     return str(value)
 
 
+def _bytes(value: Any) -> str:
+    try:
+        return f"{int(value):,} bytes"
+    except (TypeError, ValueError):
+        return "n/a"
+
+
 def render_results_page(report: dict[str, Any], *, title: str = "LatticeMemory HammingRouter Demo") -> str:
     metrics = report.get("metrics", {})
     cache = report.get("cache_simulation", {})
     distributions = report.get("distributions", {})
+    gate = report.get("product_gate", {})
+    index = report.get("index", {})
+    route_type = str(report.get("route_type", "hamming_router"))
+    is_intent_cache = route_type == "closed_set_intent_centroid_cache"
     para = distributions.get("paraphrase", {})
     near = distributions.get("near_miss", {})
     threshold_curve = report.get("threshold_curve", [])
@@ -32,11 +43,14 @@ def render_results_page(report: dict[str, Any], *, title: str = "LatticeMemory H
         sample_rows.append(threshold_curve[-1])
 
     cards = [
-        ("Calibrated Threshold", report.get("calibrated_threshold")),
+        ("Product Gate", "PASS" if gate.get("passed") else "FAIL"),
+        ("Routing Rule" if is_intent_cache else "Calibrated Threshold", report.get("calibrated_threshold")),
         ("Held-out Recall", _pct(metrics.get("held_out_recall"))),
         ("Held-out FP Rate", _pct(metrics.get("held_out_fp_rate"))),
+        ("Recall at FP Budget", _pct(metrics.get("held_out_recall_at_fp_budget"))),
         ("Cache Hit Simulation", _pct(cache.get("hit_rate"))),
         ("Mean Lookup Latency", f"{metrics.get('mean_latency_ms', 0):.2f} ms"),
+        ("Stored Route Bytes" if is_intent_cache else "Stored E8 Keys", _bytes(index.get("stored_key_bytes"))),
         ("Calibration FP Budget", _pct(report.get("fp_budget"))),
     ]
 
@@ -118,6 +132,12 @@ def render_results_page(report: dict[str, Any], *, title: str = "LatticeMemory H
     .metric strong {{
       font-size: 24px;
     }}
+    .pass {{
+      color: var(--green);
+    }}
+    .fail {{
+      color: var(--red);
+    }}
     .verdict {{
       border-left: 5px solid var(--blue);
       background: var(--panel);
@@ -163,17 +183,26 @@ def render_results_page(report: dict[str, Any], *, title: str = "LatticeMemory H
   <main>
     <h1>{html.escape(title)}</h1>
     <p class="subtitle">
-      Product proof for a calibrated semantic cache: reuse answers only when the E8 Hamming distance is inside
-      a measured threshold, while tracking recall, false positives, hit-rate simulation, and latency.
+      {
+        "Product proof for a closed-set semantic cache: route prompts to approved answer intents while tracking held-out recall, wrong-route rate, hit-rate simulation, and latency."
+        if is_intent_cache
+        else "Product proof for a calibrated semantic cache: reuse answers only when the E8 Hamming distance is inside a measured threshold, while tracking recall, false positives, hit-rate simulation, and latency."
+      }
     </p>
 
     <div class="metrics">{card_html}</div>
 
     <section class="verdict">
       <strong>Product read:</strong>
-      At threshold <code>{html.escape(str(report.get("calibrated_threshold")))}</code>, this benchmark measured
+      <span class="{html.escape('pass' if gate.get("passed") else 'fail')}">
+        {html.escape("PASS" if gate.get("passed") else "FAIL")}
+      </span>
+      for <code>{html.escape(str(gate.get("name", "recall_at_FP=0")))}</code>.
+      With rule <code>{html.escape(str(report.get("calibrated_threshold")))}</code>, this benchmark measured
       <strong>{html.escape(_pct(metrics.get("held_out_recall")))}</strong> held-out paraphrase recall and
       <strong>{html.escape(_pct(metrics.get("held_out_fp_rate")))}</strong> held-out false-positive rate.
+      Exact same-cell snapping is <code>{html.escape(str(gate.get("fragmentation_metric_role", "research_exact_snap")))}</code>,
+      not required for this product gate.
     </section>
 
     <h2>Benchmark Context</h2>
@@ -184,6 +213,14 @@ def render_results_page(report: dict[str, Any], *, title: str = "LatticeMemory H
       <tr><td>Created at</td><td>{html.escape(str(report.get("created_at")))}</td></tr>
       <tr><td>Calibration data hash</td><td><code>{html.escape(str(report.get("calibration_data_sha256")))}</code></td></tr>
       <tr><td>Cache simulation prompts</td><td>{html.escape(str(cache.get("total_prompts", 0)))}</td></tr>
+      <tr><td>Product gate target</td><td>{html.escape(_pct(gate.get("recall_target")))}</td></tr>
+      <tr><td>Held-out threshold at FP budget</td><td>{html.escape(str(metrics.get("held_out_threshold_at_fp_budget", "n/a")))}</td></tr>
+      <tr><td>Held-out recall at FP budget</td><td>{html.escape(_pct(metrics.get("held_out_recall_at_fp_budget")))}</td></tr>
+      <tr><td>Held-out FP rate at budget threshold</td><td>{html.escape(_pct(metrics.get("held_out_fp_rate_at_budget_threshold")))}</td></tr>
+      <tr><td>Exact snapping required</td><td>{html.escape(str(gate.get("exact_snap_required", False)))}</td></tr>
+      <tr><td>Stored route bytes</td><td>{html.escape(_bytes(index.get("stored_key_bytes")))}</td></tr>
+      <tr><td>Float32 equivalent bytes</td><td>{html.escape(_bytes(index.get("float32_embedding_bytes_equivalent")))}</td></tr>
+      <tr><td>Key-only compression vs float32</td><td>{html.escape(str(index.get("compression_vs_float32_keys_only", "n/a")))}x</td></tr>
     </table>
 
     <h2>Distance Distributions</h2>
