@@ -152,13 +152,19 @@ def parse_args() -> argparse.Namespace:
         "--fragmentation-target",
         type=float,
         default=0.75,
-        help="Fragmentation gate: stop early when mean_fragmentation_score >= this (default: 0.75)",
+        help="Research target for exact same-cell snapping; logged but not the product gate (default: 0.75)",
+    )
+    p.add_argument(
+        "--zero-fp-recall-target",
+        type=float,
+        default=0.8056,
+        help="Product gate: stop early when recall at zero false positives reaches this value (default: 0.8056)",
     )
     p.add_argument(
         "--separation-target",
         type=float,
         default=0.80,
-        help="Separation gate: both must pass to declare success (default: 0.80)",
+        help="Anti-collapse gate required with zero-FP recall to declare product success (default: 0.80)",
     )
     p.add_argument(
         "--output",
@@ -296,11 +302,16 @@ def main() -> None:
     baseline = trainer.eval_with_observatory()
     print(json.dumps({"step": "baseline_result", **baseline}))
 
-    if baseline["mean_fragmentation_score"] >= args.fragmentation_target:
+    if (
+        baseline["zero_fp_recall"] >= args.zero_fp_recall_target
+        and baseline["separation_score"] >= args.separation_target
+    ):
         print(json.dumps({
             "step": "skip_training",
-            "reason": f"baseline fragmentation_score {baseline['mean_fragmentation_score']:.4f} "
-                      f">= target {args.fragmentation_target}. Model already meets target.",
+            "gate": "product_zero_fp_recall",
+            "reason": f"baseline zero_fp_recall {baseline['zero_fp_recall']:.4f} "
+                      f">= target {args.zero_fp_recall_target} and separation_score "
+                      f"{baseline['separation_score']:.4f} >= target {args.separation_target}.",
         }))
         return
 
@@ -336,6 +347,7 @@ def main() -> None:
         device=args.device,
         output_dir=args.output,
         fragmentation_target=args.fragmentation_target,
+        zero_fp_recall_target=args.zero_fp_recall_target,
         separation_target=args.separation_target,
     )
 
@@ -359,6 +371,9 @@ def main() -> None:
         "near_miss_margin": args.near_miss_margin,
         "freeze_layers": args.freeze_layers,
         "fragmentation_target": args.fragmentation_target,
+        "fragmentation_metric_role": "research_exact_snap",
+        "product_gate": "zero_fp_recall",
+        "zero_fp_recall_target": args.zero_fp_recall_target,
         "separation_target": args.separation_target,
         "output": args.output,
     }))
@@ -386,17 +401,21 @@ def main() -> None:
         "best_global_step": result.best_global_step,
         "best_fragmentation_score": result.best_fragmentation_score,
         "best_separation_score": result.best_separation_score,
+        "best_zero_fp_recall": result.best_zero_fp_recall,
+        "best_zero_fp_threshold": result.best_zero_fp_threshold,
+        "product_gate": "zero_fp_recall",
         "reached_target": result.reached_target,
         "output_dir": str(result.output_dir) if result.output_dir else None,
     }))
 
     if not result.reached_target:
         print(
-            f"\nWARNING: Training completed but fragmentation_score "
-            f"{result.best_fragmentation_score:.4f} < target {args.fragmentation_target}.\n"
-            f"Consider: --lambda-address {args.lambda_address * 2:.0f}  (double address weight)\n"
-            f"       or: --data paws+qqp  (more diverse paraphrase data)\n"
-            f"       or: --epochs {args.epochs + 5}  (more training)",
+            f"\nWARNING: Training completed but product gate was not reached: "
+            f"best_zero_fp_recall {result.best_zero_fp_recall:.4f} < target "
+            f"{args.zero_fp_recall_target} or separation_score "
+            f"{result.best_separation_score:.4f} < target {args.separation_target}.\n"
+            f"Exact snap fragmentation remains research telemetry: "
+            f"best_fragmentation_score={result.best_fragmentation_score:.4f}.",
             file=sys.stderr,
         )
         sys.exit(1)

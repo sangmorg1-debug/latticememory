@@ -36,7 +36,7 @@ Then add a worst-block/focal extension to the soft-to-hard loss. Instead of aver
 
 ## Safety Gates
 
-Any training run is only useful if all are true:
+Product usefulness is gated by safe HammingRouter behavior:
 
 - `zero_fp_recall >= 0.8056`
 - `separation_score >= 0.8`
@@ -44,6 +44,8 @@ Any training run is only useful if all are true:
 - `mean_inter_block_nmi` does not spike into collapse-like behavior
 
 If exact snapping improves but these gates fail, reject the run.
+`mean_fragmentation_score` remains research telemetry, not the product pass/fail
+gate.
 
 ## Success Criteria
 

@@ -71,8 +71,13 @@ This result gives the next training target:
 
 - Pull hard paraphrase false negatives below threshold 102.
 - Keep near-miss examples above threshold 102.
-- Track recall at FP = 0 as the primary safety metric.
+- Track recall at FP = 0 as the primary product metric.
 - Only treat exact snapping as progress if this safety metric does not regress.
+
+`mean_fragmentation_score` is research telemetry for exact same-cell snapping.
+It should not be used as the product pass/fail gate for semantic cache routing.
+The product gate is `recall_at_FP=0 >= target` with zero observed hard-near-miss
+false positives, plus shadow-mode validation before serving approximate hits.
 
 The next experiment should add block-level failure audit on these false
 negatives and near misses, then use those blocks as targets for canonical-key

@@ -106,11 +106,20 @@ E8, D8, E7, and E6 sub-lattice routers with PyTorch STE (`latticememory/moe.py`)
 
 `LatticeLLMProxy` in `latticememory/proxy.py`. OpenAI-compatible FastAPI gateway that intercepts `/v1/chat/completions`, performs E8 semantic cache lookups, and returns cached responses for semantically equivalent prompts.
 
+**Product gate:** The commercial success metric is calibrated HammingRouter recall at zero observed false positives:
+
+- primary: `recall_at_FP=0 >= target` on held-out paraphrases
+- safety: hard near-miss false-positive rate remains `0.0`
+- deployment: shadow mode validates approximate hits before serving them
+- operations: latency overhead and index/storage bytes are reported with each proof run
+
+`mean_fragmentation_score` is now a research metric for exact same-cell snapping. It is not required for the cache proxy product claim. Exact snapping remains a stretch goal as long as the zero-FP gate does not regress.
+
 **Benchmark (from `benchmarks/benchmark_semantic_cache.py`, synthetic):**
 - 60% cache hit rate vs. 30% for exact-string caching on 30% repeat / 30% paraphrase / 40% novel query distribution
 - +30pp uplift from E8 semantic neighborhood routing over exact-string baseline
 
-**Outstanding:** Run with real model (`dfrokido/bge-large-e8-snap`) and natural-language paraphrases to get honest hamming1 hit rate. That number is the key design partner conversation starter.
+**Outstanding:** Run with real model (`dfrokido/bge-large-e8-snap`) and natural-language paraphrases/near-misses to get honest `recall_at_FP=0`, shadow-mode hit rate, latency, and bytes. Those numbers are the key design partner conversation starter.
 
 **Revenue model:** Usage-based or per-seat for teams with high LLM API spend. Target: teams spending >$5K/month on OpenAI/Anthropic APIs.
 

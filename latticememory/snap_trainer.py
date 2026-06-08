@@ -50,6 +50,7 @@ class SnapTrainingConfig:
       lambda_address:  3.0   — was 50.0; 50:1 ratio to contrastive caused collapse
       lambda_negative: 1.0   — was 0.0; PAWS negatives are required to prevent collapse
       freeze_layers:   20    — freeze first 20/24 BGE-large layers; preserve base semantics
+      zero_fp_recall_target: 0.8056 — product gate for safe HammingRouter recall
       separation_target: 0.8 — inter-cluster separation gate (checks for collapse)
     """
     epochs: int = 5
@@ -82,8 +83,9 @@ class SnapTrainingConfig:
     device: str = "auto"
     output_dir: str | Path | None = None
     obs_eval_every_steps: int = 50
-    # Both gates must pass to declare success.
+    # Product success is calibrated safe recall. Fragmentation remains a research metric.
     fragmentation_target: float = 0.75
+    zero_fp_recall_target: float = 0.8056
     separation_target: float = 0.80
 
 
@@ -206,26 +208,35 @@ def _is_better_snap_checkpoint(
     best_hamming_gap: float,
     best_zero_fp_recall: float,
 ) -> bool:
-    if mean_fragmentation > best_fragmentation:
+    if zero_fp_recall > best_zero_fp_recall:
         return True
-    if mean_fragmentation < best_fragmentation:
+    if zero_fp_recall < best_zero_fp_recall:
         return False
     if hamming_gap > best_hamming_gap:
         return True
     if hamming_gap < best_hamming_gap:
         return False
-    return zero_fp_recall > best_zero_fp_recall
+    return mean_fragmentation > best_fragmentation
+
+
+def _product_gate_passed(*, ckpt: SnapObsCheckpoint, config: SnapTrainingConfig) -> bool:
+    return (
+        ckpt.zero_fp_recall >= config.zero_fp_recall_target
+        and ckpt.separation_score >= config.separation_target
+        and not ckpt.is_collapsed
+    )
 
 
 class SnapTrainer:
     """Train a symmetric E8 snap encoder using live Observatory-guided evaluation.
 
-    The Observatory runs every obs_eval_every_steps gradient updates and measures BOTH:
-      - fragmentation_score: do paraphrases land in the same E8 cell? (intra-cluster)
+    The Observatory runs every obs_eval_every_steps gradient updates and measures:
+      - zero_fp_recall:      product gate for safe calibrated HammingRouter recall
       - separation_score:    do different concepts land in different E8 cells? (anti-collapse gate)
+      - fragmentation_score: research metric for exact same-cell snapping
 
     A model that collapses to constant output scores fragmentation=1.0 but separation=0.0.
-    Both gates must exceed their targets before training stops successfully.
+    Product success requires zero-FP recall and separation; exact fragmentation is not required.
 
     Collapse prevention (v2):
       - freeze_layers=20 preserves the base semantic representation in frozen layers
@@ -950,15 +961,14 @@ class SnapTrainer:
                         )
                         if ckpt is not None:
                             obs_checkpoints.append(ckpt)
-                            both_pass = (
-                                ckpt.mean_fragmentation_score >= config.fragmentation_target
-                                and ckpt.separation_score >= config.separation_target
-                            )
-                            if both_pass:
+                            if _product_gate_passed(ckpt=ckpt, config=config):
                                 _log({
                                     "metric": "target_reached",
+                                    "gate": "product_zero_fp_recall",
                                     "global_step": global_step,
                                     "mean_fragmentation_score": ckpt.mean_fragmentation_score,
+                                    "zero_fp_recall": ckpt.zero_fp_recall,
+                                    "zero_fp_recall_target": config.zero_fp_recall_target,
                                     "separation_score": ckpt.separation_score,
                                     "epoch": epoch,
                                 })
@@ -991,15 +1001,14 @@ class SnapTrainer:
             if ckpt is not None:
                 obs_checkpoints.append(ckpt)
                 if not reached_target:
-                    both_pass = (
-                        ckpt.mean_fragmentation_score >= config.fragmentation_target
-                        and ckpt.separation_score >= config.separation_target
-                    )
-                    if both_pass:
+                    if _product_gate_passed(ckpt=ckpt, config=config):
                         _log({
                             "metric": "target_reached",
+                            "gate": "product_zero_fp_recall",
                             "global_step": global_step,
                             "mean_fragmentation_score": ckpt.mean_fragmentation_score,
+                            "zero_fp_recall": ckpt.zero_fp_recall,
+                            "zero_fp_recall_target": config.zero_fp_recall_target,
                             "separation_score": ckpt.separation_score,
                             "trigger": "end_of_epoch",
                         })
@@ -1094,6 +1103,9 @@ class SnapTrainer:
                 "best_zero_fp_recall": round(best_zero_fp_recall, 4),
                 "best_zero_fp_threshold": best_zero_fp_threshold,
                 "fragmentation_target": config.fragmentation_target,
+                "fragmentation_metric_role": "research_exact_snap",
+                "product_gate": "zero_fp_recall",
+                "zero_fp_recall_target": config.zero_fp_recall_target,
                 "separation_target": config.separation_target,
                 "reached_target": reached_target,
                 "val_cluster_names": list(self.val_clusters.keys()),

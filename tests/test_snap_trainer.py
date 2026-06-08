@@ -148,8 +148,15 @@ def test_config_defaults():
     assert cfg.freeze_layers == 20
     assert cfg.fragmentation_target == 0.75
     assert cfg.separation_target == 0.80
+    assert cfg.zero_fp_recall_target == 0.8056
     assert cfg.fp16 is True
     assert cfg.gradient_checkpointing is True
+
+
+def test_config_product_gate_override():
+    cfg = SnapTrainingConfig(zero_fp_recall_target=0.9, fragmentation_target=0.25)
+    assert cfg.zero_fp_recall_target == 0.9
+    assert cfg.fragmentation_target == 0.25
 
 
 def test_config_override():
@@ -199,36 +206,47 @@ def test_config_soft_hard_focal_override():
     assert cfg.soft_hard_top_k_blocks == 8
 
 
-def test_best_checkpoint_tie_breaks_on_hamming_gap():
+def test_best_checkpoint_prioritizes_zero_fp_recall_over_fragmentation():
     assert _is_better_snap_checkpoint(
         mean_fragmentation=0.0,
-        hamming_gap=-0.1,
+        hamming_gap=1.0,
         zero_fp_recall=0.92,
-        best_fragmentation=0.0,
-        best_hamming_gap=-2.1,
+        best_fragmentation=0.4,
+        best_hamming_gap=20.0,
         best_zero_fp_recall=0.78,
     )
 
 
-def test_best_checkpoint_tie_breaks_on_zero_fp_recall_after_equal_gap():
+def test_best_checkpoint_tie_breaks_on_hamming_gap_after_equal_zero_fp():
     assert _is_better_snap_checkpoint(
         mean_fragmentation=0.0,
-        hamming_gap=-0.1,
+        hamming_gap=4.0,
         zero_fp_recall=0.92,
-        best_fragmentation=0.0,
-        best_hamming_gap=-0.1,
-        best_zero_fp_recall=0.78,
+        best_fragmentation=0.4,
+        best_hamming_gap=2.0,
+        best_zero_fp_recall=0.92,
     )
 
 
-def test_best_checkpoint_rejects_worse_fragmentation():
+def test_best_checkpoint_uses_fragmentation_only_as_final_tie_breaker():
+    assert _is_better_snap_checkpoint(
+        mean_fragmentation=0.2,
+        hamming_gap=2.0,
+        zero_fp_recall=0.92,
+        best_fragmentation=0.1,
+        best_hamming_gap=2.0,
+        best_zero_fp_recall=0.92,
+    )
+
+
+def test_best_checkpoint_rejects_worse_zero_fp_recall():
     assert not _is_better_snap_checkpoint(
-        mean_fragmentation=0.0,
+        mean_fragmentation=1.0,
         hamming_gap=5.0,
-        zero_fp_recall=1.0,
-        best_fragmentation=0.2,
-        best_hamming_gap=-2.1,
-        best_zero_fp_recall=0.78,
+        zero_fp_recall=0.7,
+        best_fragmentation=0.0,
+        best_hamming_gap=2.1,
+        best_zero_fp_recall=0.8,
     )
 
 
@@ -444,6 +462,9 @@ def test_train_writes_summary_json(trainable_trainer, tmp_path):
     assert "best_zero_fp_recall" in summary
     assert summary["soft_hard_focal_gamma"] == 0.0
     assert summary["soft_hard_top_k_blocks"] == 0
+    assert summary["product_gate"] == "zero_fp_recall"
+    assert summary["zero_fp_recall_target"] == 0.8056
+    assert summary["fragmentation_metric_role"] == "research_exact_snap"
     assert "epoch_metrics" in summary
     assert "obs_checkpoints" in summary
     assert len(summary["epoch_metrics"]) == 1
@@ -478,7 +499,7 @@ def test_train_scheduler_handles_partial_gradient_accumulation_step(trainable_tr
 
 @pytest.mark.slow
 def test_train_early_stop_when_target_reached(trainable_trainer, tmp_path):
-    """If fragmentation_target=0.0, training should stop after 1 epoch."""
+    """The product gate is zero-FP recall + separation, not exact fragmentation."""
     examples = _tiny_examples(8)
     config = SnapTrainingConfig(
         epochs=3,
@@ -490,13 +511,14 @@ def test_train_early_stop_when_target_reached(trainable_trainer, tmp_path):
         freeze_layers=0,
         log_every_batches=0,
         output_dir=str(tmp_path),
-        fragmentation_target=0.0,
+        fragmentation_target=1.0,
+        zero_fp_recall_target=0.0,
         separation_target=0.0,
         device="cpu",
     )
     result = trainable_trainer.train(examples, config)
-    # target=0.0 means training stops at first obs eval that returns any score
     assert result.reached_target is True
+    assert result.best_fragmentation_score < config.fragmentation_target
     assert len(result.epoch_metrics) <= 3  # stopped at or before epoch 3
 
 
