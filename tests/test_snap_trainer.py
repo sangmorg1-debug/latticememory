@@ -143,6 +143,8 @@ def test_config_defaults():
     assert cfg.soft_hard_temperature_start == 1.0
     assert cfg.soft_hard_temperature_end == 0.05
     assert cfg.soft_hard_straight_through is False
+    assert cfg.soft_hard_focal_gamma == 0.0
+    assert cfg.soft_hard_top_k_blocks == 0
     assert cfg.freeze_layers == 20
     assert cfg.fragmentation_target == 0.75
     assert cfg.separation_target == 0.80
@@ -186,6 +188,15 @@ def test_config_soft_hard_override():
     assert cfg.soft_hard_temperature_start == 0.8
     assert cfg.soft_hard_temperature_end == 0.1
     assert cfg.soft_hard_straight_through is True
+
+
+def test_config_soft_hard_focal_override():
+    cfg = SnapTrainingConfig(
+        soft_hard_focal_gamma=2.0,
+        soft_hard_top_k_blocks=8,
+    )
+    assert cfg.soft_hard_focal_gamma == 2.0
+    assert cfg.soft_hard_top_k_blocks == 8
 
 
 def test_best_checkpoint_tie_breaks_on_hamming_gap():
@@ -431,6 +442,8 @@ def test_train_writes_summary_json(trainable_trainer, tmp_path):
     assert "best_fragmentation_score" in summary
     assert "best_hamming_gap" in summary
     assert "best_zero_fp_recall" in summary
+    assert summary["soft_hard_focal_gamma"] == 0.0
+    assert summary["soft_hard_top_k_blocks"] == 0
     assert "epoch_metrics" in summary
     assert "obs_checkpoints" in summary
     assert len(summary["epoch_metrics"]) == 1

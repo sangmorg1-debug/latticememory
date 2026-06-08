@@ -70,6 +70,8 @@ class SnapTrainingConfig:
     soft_hard_temperature_start: float = 1.0
     soft_hard_temperature_end: float = 0.05
     soft_hard_straight_through: bool = False
+    soft_hard_focal_gamma: float = 0.0
+    soft_hard_top_k_blocks: int = 0
     fp16: bool = True
     gradient_checkpointing: bool = True
     # Freeze the first N transformer layers. Prevents address pressure from destroying the
@@ -658,6 +660,8 @@ class SnapTrainer:
             lambda_soft_hard=config.lambda_soft_hard,
             soft_hard_temperature=config.soft_hard_temperature_start,
             soft_hard_straight_through=config.soft_hard_straight_through,
+            soft_hard_focal_gamma=config.soft_hard_focal_gamma,
+            soft_hard_top_k_blocks=config.soft_hard_top_k_blocks,
         ).to(train_device)
 
         params = [p for p in _encoder_parameters(self.encoder) if p.requires_grad]
@@ -721,6 +725,8 @@ class SnapTrainer:
             "soft_hard_temperature_start": config.soft_hard_temperature_start,
             "soft_hard_temperature_end": config.soft_hard_temperature_end,
             "soft_hard_straight_through": config.soft_hard_straight_through,
+            "soft_hard_focal_gamma": config.soft_hard_focal_gamma,
+            "soft_hard_top_k_blocks": config.soft_hard_top_k_blocks,
         })
 
         total_optimizer_steps = max(1, config.epochs * steps_per_epoch)
@@ -1078,6 +1084,8 @@ class SnapTrainer:
                 "soft_hard_temperature_start": config.soft_hard_temperature_start,
                 "soft_hard_temperature_end": config.soft_hard_temperature_end,
                 "soft_hard_straight_through": config.soft_hard_straight_through,
+                "soft_hard_focal_gamma": config.soft_hard_focal_gamma,
+                "soft_hard_top_k_blocks": config.soft_hard_top_k_blocks,
                 "epochs_trained": len(epoch_metrics_all),
                 "best_global_step": best_global_step,
                 "best_fragmentation_score": round(best_fragmentation, 4),

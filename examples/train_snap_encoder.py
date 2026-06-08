@@ -107,6 +107,18 @@ def parse_args() -> argparse.Namespace:
         help="Use straight-through hard codebook assignment inside the soft-to-hard loss",
     )
     p.add_argument(
+        "--soft-hard-focal-gamma",
+        type=float,
+        default=0.0,
+        help="Focal exponent for emphasizing low-probability E8 target blocks (default: 0.0)",
+    )
+    p.add_argument(
+        "--soft-hard-top-k-blocks",
+        type=int,
+        default=0,
+        help="Only average the worst K E8 blocks in soft-to-hard loss when > 0 (default: 0)",
+    )
+    p.add_argument(
         "--lambda-hamming",
         type=float,
         default=0.3,
@@ -314,6 +326,8 @@ def main() -> None:
         soft_hard_temperature_start=args.soft_hard_temperature_start,
         soft_hard_temperature_end=args.soft_hard_temperature_end,
         soft_hard_straight_through=args.soft_hard_straight_through,
+        soft_hard_focal_gamma=args.soft_hard_focal_gamma,
+        soft_hard_top_k_blocks=args.soft_hard_top_k_blocks,
         freeze_layers=args.freeze_layers,
         fp16=not args.no_fp16,
         gradient_checkpointing=True,
@@ -338,6 +352,8 @@ def main() -> None:
         "soft_hard_temperature_start": args.soft_hard_temperature_start,
         "soft_hard_temperature_end": args.soft_hard_temperature_end,
         "soft_hard_straight_through": args.soft_hard_straight_through,
+        "soft_hard_focal_gamma": args.soft_hard_focal_gamma,
+        "soft_hard_top_k_blocks": args.soft_hard_top_k_blocks,
         "lambda_negative": args.lambda_negative,
         "lambda_near_miss": args.lambda_near_miss,
         "near_miss_margin": args.near_miss_margin,
