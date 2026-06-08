@@ -240,6 +240,8 @@ class E8RoutingLoss(torch.nn.Module):
         lambda_soft_hard: float = 0.0,
         soft_hard_temperature: float = 1.0,
         soft_hard_straight_through: bool = False,
+        soft_hard_focal_gamma: float = 0.0,
+        soft_hard_top_k_blocks: int = 0,
     ):
         super().__init__()
         if d_model <= 0 or d_model % 8 != 0:
@@ -248,6 +250,10 @@ class E8RoutingLoss(torch.nn.Module):
             raise ValueError("temperature must be > 0")
         if soft_hard_temperature <= 0:
             raise ValueError("soft_hard_temperature must be > 0")
+        if soft_hard_focal_gamma < 0:
+            raise ValueError("soft_hard_focal_gamma must be >= 0")
+        if soft_hard_top_k_blocks < 0:
+            raise ValueError("soft_hard_top_k_blocks must be >= 0")
         lattice = E8LatticeDB(d_model=d_model)
         self.d_model = int(d_model)
         self.temperature = float(temperature)
@@ -262,6 +268,8 @@ class E8RoutingLoss(torch.nn.Module):
         self.lambda_soft_hard = float(lambda_soft_hard)
         self.soft_hard_temperature = float(soft_hard_temperature)
         self.soft_hard_straight_through = bool(soft_hard_straight_through)
+        self.soft_hard_focal_gamma = float(soft_hard_focal_gamma)
+        self.soft_hard_top_k_blocks = int(soft_hard_top_k_blocks)
         self.register_buffer("codebook", lattice._codebook.float(), persistent=False)
 
     def forward(
@@ -391,7 +399,14 @@ class E8RoutingLoss(torch.nn.Module):
         probs = log_probs.exp()
         target_log_probs = log_probs.gather(2, target_keys.unsqueeze(-1)).squeeze(-1)
         target_probs = probs.gather(2, target_keys.unsqueeze(-1)).squeeze(-1)
-        soft_hard = -target_log_probs.mean()
+        per_block_loss = -target_log_probs
+        if self.soft_hard_focal_gamma > 0:
+            per_block_loss = per_block_loss * (1.0 - target_probs).pow(self.soft_hard_focal_gamma)
+        if self.soft_hard_top_k_blocks > 0:
+            k = min(int(self.soft_hard_top_k_blocks), per_block_loss.shape[1])
+            soft_hard = per_block_loss.topk(k, dim=1).values.mean()
+        else:
+            soft_hard = per_block_loss.mean()
 
         if self.soft_hard_straight_through:
             soft_vectors = torch.einsum("bnk,kd->bnd", probs, code_vectors)

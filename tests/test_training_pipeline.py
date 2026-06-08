@@ -295,6 +295,34 @@ def test_e8_routing_loss_soft_hard_objective_reports_target_probability():
     assert torch.isfinite(query_embeddings.grad).all()
 
 
+def test_e8_routing_loss_focal_soft_hard_emphasizes_low_probability_blocks():
+    torch.manual_seed(44)
+    query_embeddings = torch.randn(4, 16, requires_grad=True)
+    positive_embeddings = query_embeddings.detach().clone() + 0.01 * torch.randn(4, 16)
+
+    base_loss = E8RoutingLoss(
+        d_model=16,
+        lambda_soft_hard=1.0,
+        soft_hard_temperature=0.2,
+        soft_hard_focal_gamma=0.0,
+        soft_hard_top_k_blocks=0,
+    )
+    focal_loss = E8RoutingLoss(
+        d_model=16,
+        lambda_soft_hard=1.0,
+        soft_hard_temperature=0.2,
+        soft_hard_focal_gamma=2.0,
+        soft_hard_top_k_blocks=1,
+    )
+
+    base = base_loss(query_embeddings, positive_embeddings, None)
+    focal = focal_loss(query_embeddings, positive_embeddings, None)
+
+    assert focal.soft_hard.item() >= 0.0
+    assert focal.target_cell_probability.item() >= 0.0
+    assert focal.total.item() != base.total.item()
+
+
 def test_train_and_evaluate_examples_reports_lattice_routes():
     examples = [
         RoutingTrainingExample("what city is the capital of france", "Paris is the capital of France.", ["Mars is a planet."]),
