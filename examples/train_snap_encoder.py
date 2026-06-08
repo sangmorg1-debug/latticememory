@@ -84,6 +84,29 @@ def parse_args() -> argparse.Namespace:
         help="E8 address block coordinate-level MSE loss weight (default: 3.0)",
     )
     p.add_argument(
+        "--lambda-soft-hard",
+        type=float,
+        default=0.0,
+        help="Temperature-annealed soft-to-hard E8 target-cell loss weight (default: 0.0)",
+    )
+    p.add_argument(
+        "--soft-hard-temperature-start",
+        type=float,
+        default=1.0,
+        help="Starting temperature for soft-to-hard target-cell loss (default: 1.0)",
+    )
+    p.add_argument(
+        "--soft-hard-temperature-end",
+        type=float,
+        default=0.05,
+        help="Ending temperature for soft-to-hard target-cell loss (default: 0.05)",
+    )
+    p.add_argument(
+        "--soft-hard-straight-through",
+        action="store_true",
+        help="Use straight-through hard codebook assignment inside the soft-to-hard loss",
+    )
+    p.add_argument(
         "--lambda-hamming",
         type=float,
         default=0.3,
@@ -287,6 +310,10 @@ def main() -> None:
         lambda_address_hinge=args.lambda_address_hinge,
         address_hinge_margin=args.address_hinge_margin,
         lambda_address_mse=args.lambda_address_mse,
+        lambda_soft_hard=args.lambda_soft_hard,
+        soft_hard_temperature_start=args.soft_hard_temperature_start,
+        soft_hard_temperature_end=args.soft_hard_temperature_end,
+        soft_hard_straight_through=args.soft_hard_straight_through,
         freeze_layers=args.freeze_layers,
         fp16=not args.no_fp16,
         gradient_checkpointing=True,
@@ -307,6 +334,10 @@ def main() -> None:
         "lambda_address_hinge": args.lambda_address_hinge,
         "address_hinge_margin": args.address_hinge_margin,
         "lambda_address_mse": args.lambda_address_mse,
+        "lambda_soft_hard": args.lambda_soft_hard,
+        "soft_hard_temperature_start": args.soft_hard_temperature_start,
+        "soft_hard_temperature_end": args.soft_hard_temperature_end,
+        "soft_hard_straight_through": args.soft_hard_straight_through,
         "lambda_negative": args.lambda_negative,
         "lambda_near_miss": args.lambda_near_miss,
         "near_miss_margin": args.near_miss_margin,

@@ -268,6 +268,33 @@ def test_e8_routing_loss_hinge_and_mse_objectives():
     assert torch.isfinite(query_embeddings.grad).all()
 
 
+def test_e8_routing_loss_soft_hard_objective_reports_target_probability():
+    torch.manual_seed(43)
+    query_embeddings = torch.randn(4, 16, requires_grad=True)
+    positive_embeddings = query_embeddings.detach().clone() + 0.01 * torch.randn(4, 16)
+
+    loss_fn = E8RoutingLoss(
+        d_model=16,
+        lambda_address=0.0,
+        lambda_hamming=0.0,
+        lambda_negative=0.0,
+        lambda_near_miss=0.0,
+        lambda_soft_hard=2.0,
+        soft_hard_temperature=0.5,
+        soft_hard_straight_through=True,
+    )
+
+    output = loss_fn(query_embeddings, positive_embeddings, None)
+
+    assert output.soft_hard.item() >= 0.0
+    assert 0.0 <= output.target_cell_probability.item() <= 1.0
+    assert output.total.item() >= output.contrastive.item()
+
+    output.total.backward()
+    assert query_embeddings.grad is not None
+    assert torch.isfinite(query_embeddings.grad).all()
+
+
 def test_train_and_evaluate_examples_reports_lattice_routes():
     examples = [
         RoutingTrainingExample("what city is the capital of france", "Paris is the capital of France.", ["Mars is a planet."]),

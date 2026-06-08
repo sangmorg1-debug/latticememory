@@ -43,6 +43,8 @@ class E8RoutingLossOutput:
     near_miss: torch.Tensor
     address_hinge: torch.Tensor
     address_mse: torch.Tensor
+    soft_hard: torch.Tensor
+    target_cell_probability: torch.Tensor
 
 
 @dataclass(frozen=True)
@@ -235,12 +237,17 @@ class E8RoutingLoss(torch.nn.Module):
         lambda_address_hinge: float = 0.0,
         address_hinge_margin: float = 0.2,
         lambda_address_mse: float = 0.0,
+        lambda_soft_hard: float = 0.0,
+        soft_hard_temperature: float = 1.0,
+        soft_hard_straight_through: bool = False,
     ):
         super().__init__()
         if d_model <= 0 or d_model % 8 != 0:
             raise ValueError("d_model must be positive and divisible by 8")
         if temperature <= 0:
             raise ValueError("temperature must be > 0")
+        if soft_hard_temperature <= 0:
+            raise ValueError("soft_hard_temperature must be > 0")
         lattice = E8LatticeDB(d_model=d_model)
         self.d_model = int(d_model)
         self.temperature = float(temperature)
@@ -252,6 +259,9 @@ class E8RoutingLoss(torch.nn.Module):
         self.lambda_address_hinge = float(lambda_address_hinge)
         self.address_hinge_margin = float(address_hinge_margin)
         self.lambda_address_mse = float(lambda_address_mse)
+        self.lambda_soft_hard = float(lambda_soft_hard)
+        self.soft_hard_temperature = float(soft_hard_temperature)
+        self.soft_hard_straight_through = bool(soft_hard_straight_through)
         self.register_buffer("codebook", lattice._codebook.float(), persistent=False)
 
     def forward(
@@ -274,7 +284,8 @@ class E8RoutingLoss(torch.nn.Module):
         if (self.lambda_address > 0 or 
             self.lambda_hamming > 0 or 
             self.lambda_address_hinge > 0 or 
-            self.lambda_address_mse > 0):
+            self.lambda_address_mse > 0 or
+            self.lambda_soft_hard > 0):
             target_keys = self._target_keys(positive_embeddings.detach()).to(query_embeddings.device)
         else:
             target_keys = None
@@ -323,6 +334,15 @@ class E8RoutingLoss(torch.nn.Module):
         else:
             address_mse = query_embeddings.sum() * 0.0
 
+        if self.lambda_soft_hard > 0:
+            soft_hard, target_cell_probability = self._soft_hard_loss(
+                query_embeddings=query_embeddings,
+                target_keys=target_keys,
+            )
+        else:
+            soft_hard = query_embeddings.sum() * 0.0
+            target_cell_probability = query_embeddings.sum() * 0.0
+
         negative = self._negative_loss(query_embeddings, positive_embeddings, negative_embeddings)
         near_miss = self._near_miss_loss(query_embeddings, negative_embeddings)
         total = (
@@ -333,6 +353,7 @@ class E8RoutingLoss(torch.nn.Module):
             + (self.lambda_near_miss * near_miss)
             + (self.lambda_address_hinge * address_hinge)
             + (self.lambda_address_mse * address_mse)
+            + (self.lambda_soft_hard * soft_hard)
         )
         return E8RoutingLossOutput(
             total=total,
@@ -343,6 +364,8 @@ class E8RoutingLoss(torch.nn.Module):
             near_miss=near_miss,
             address_hinge=address_hinge,
             address_mse=address_mse,
+            soft_hard=soft_hard,
+            target_cell_probability=target_cell_probability,
         )
 
     def _target_keys(self, positive_embeddings: torch.Tensor) -> torch.Tensor:
@@ -351,6 +374,35 @@ class E8RoutingLoss(torch.nn.Module):
             [list(lattice._quantize_to_indices(embedding)) for embedding in positive_embeddings.cpu()],
             dtype=torch.long,
         )
+
+    def _soft_hard_loss(
+        self,
+        *,
+        query_embeddings: torch.Tensor,
+        target_keys: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        num_blocks = query_embeddings.shape[1] // 8
+        blocks = query_embeddings.reshape(query_embeddings.shape[0], num_blocks, 8)
+        block_vectors = F.normalize(blocks, dim=-1)
+        code_vectors = F.normalize(self.codebook.to(query_embeddings.device), dim=-1)
+        logits = torch.einsum("bnd,kd->bnk", block_vectors, code_vectors)
+        logits = logits / float(self.soft_hard_temperature)
+        log_probs = F.log_softmax(logits, dim=-1)
+        probs = log_probs.exp()
+        target_log_probs = log_probs.gather(2, target_keys.unsqueeze(-1)).squeeze(-1)
+        target_probs = probs.gather(2, target_keys.unsqueeze(-1)).squeeze(-1)
+        soft_hard = -target_log_probs.mean()
+
+        if self.soft_hard_straight_through:
+            soft_vectors = torch.einsum("bnk,kd->bnd", probs, code_vectors)
+            hard_indices = probs.argmax(dim=-1)
+            hard_one_hot = F.one_hot(hard_indices, num_classes=code_vectors.shape[0]).to(probs.dtype)
+            hard_vectors = torch.einsum("bnk,kd->bnd", hard_one_hot, code_vectors)
+            straight_through_vectors = hard_vectors.detach() - soft_vectors.detach() + soft_vectors
+            target_vectors = code_vectors[target_keys]
+            soft_hard = soft_hard + F.mse_loss(straight_through_vectors, target_vectors)
+
+        return soft_hard, target_probs.mean()
 
     def _negative_loss(
         self,

@@ -139,6 +139,10 @@ def test_config_defaults():
     assert cfg.lambda_address_hinge == 3.0
     assert cfg.address_hinge_margin == 0.2
     assert cfg.lambda_address_mse == 3.0
+    assert cfg.lambda_soft_hard == 0.0
+    assert cfg.soft_hard_temperature_start == 1.0
+    assert cfg.soft_hard_temperature_end == 0.05
+    assert cfg.soft_hard_straight_through is False
     assert cfg.freeze_layers == 20
     assert cfg.fragmentation_target == 0.75
     assert cfg.separation_target == 0.80
@@ -169,6 +173,19 @@ def test_config_near_miss_override():
     cfg = SnapTrainingConfig(lambda_near_miss=2.5, near_miss_margin=96.0)
     assert cfg.lambda_near_miss == 2.5
     assert cfg.near_miss_margin == 96.0
+
+
+def test_config_soft_hard_override():
+    cfg = SnapTrainingConfig(
+        lambda_soft_hard=4.0,
+        soft_hard_temperature_start=0.8,
+        soft_hard_temperature_end=0.1,
+        soft_hard_straight_through=True,
+    )
+    assert cfg.lambda_soft_hard == 4.0
+    assert cfg.soft_hard_temperature_start == 0.8
+    assert cfg.soft_hard_temperature_end == 0.1
+    assert cfg.soft_hard_straight_through is True
 
 
 def test_best_checkpoint_tie_breaks_on_hamming_gap():
@@ -419,6 +436,12 @@ def test_train_writes_summary_json(trainable_trainer, tmp_path):
     assert len(summary["epoch_metrics"]) == 1
     assert "hamming_gap" in summary["epoch_metrics"][0]
     assert "zero_fp_recall" in summary["epoch_metrics"][0]
+    assert "soft_hard_loss" in summary["epoch_metrics"][0]
+    assert "target_cell_probability" in summary["epoch_metrics"][0]
+    assert "soft_hard_temperature" in summary["epoch_metrics"][0]
+    assert "soft_hard_loss_recent" in summary["obs_checkpoints"][0]
+    assert "target_cell_probability_recent" in summary["obs_checkpoints"][0]
+    assert "soft_hard_temperature" in summary["obs_checkpoints"][0]
 
 
 @pytest.mark.slow

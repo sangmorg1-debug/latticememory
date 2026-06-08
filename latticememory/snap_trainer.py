@@ -66,6 +66,10 @@ class SnapTrainingConfig:
     lambda_address_hinge: float = 3.0
     address_hinge_margin: float = 0.2
     lambda_address_mse: float = 3.0
+    lambda_soft_hard: float = 0.0
+    soft_hard_temperature_start: float = 1.0
+    soft_hard_temperature_end: float = 0.05
+    soft_hard_straight_through: bool = False
     fp16: bool = True
     gradient_checkpointing: bool = True
     # Freeze the first N transformer layers. Prevents address pressure from destroying the
@@ -104,6 +108,9 @@ class SnapObsCheckpoint:
     elapsed_sec: float = 0.0
     address_hinge_loss_recent: float = 0.0
     address_mse_loss_recent: float = 0.0
+    soft_hard_loss_recent: float = 0.0
+    target_cell_probability_recent: float = 0.0
+    soft_hard_temperature: float = 0.0
     paraphrase_hamming_mean: float = 0.0
     near_miss_hamming_mean: float = 0.0
 
@@ -127,6 +134,9 @@ class SnapEpochMetrics:
     is_best: bool = False
     address_hinge_loss: float = 0.0
     address_mse_loss: float = 0.0
+    soft_hard_loss: float = 0.0
+    target_cell_probability: float = 0.0
+    soft_hard_temperature: float = 0.0
     paraphrase_hamming_mean: float = 0.0
     near_miss_hamming_mean: float = 0.0
 
@@ -645,6 +655,9 @@ class SnapTrainer:
             lambda_address_hinge=config.lambda_address_hinge,
             address_hinge_margin=config.address_hinge_margin,
             lambda_address_mse=config.lambda_address_mse,
+            lambda_soft_hard=config.lambda_soft_hard,
+            soft_hard_temperature=config.soft_hard_temperature_start,
+            soft_hard_straight_through=config.soft_hard_straight_through,
         ).to(train_device)
 
         params = [p for p in _encoder_parameters(self.encoder) if p.requires_grad]
@@ -704,7 +717,21 @@ class SnapTrainer:
             "lambda_near_miss": config.lambda_near_miss,
             "near_miss_margin": config.near_miss_margin,
             "lambda_hamming": config.lambda_hamming,
+            "lambda_soft_hard": config.lambda_soft_hard,
+            "soft_hard_temperature_start": config.soft_hard_temperature_start,
+            "soft_hard_temperature_end": config.soft_hard_temperature_end,
+            "soft_hard_straight_through": config.soft_hard_straight_through,
         })
+
+        total_optimizer_steps = max(1, config.epochs * steps_per_epoch)
+
+        def _soft_hard_temperature(step: int) -> float:
+            if total_optimizer_steps <= 1:
+                return float(config.soft_hard_temperature_end)
+            progress = min(1.0, max(0.0, step / float(total_optimizer_steps - 1)))
+            start = float(config.soft_hard_temperature_start)
+            end = float(config.soft_hard_temperature_end)
+            return start + ((end - start) * progress)
 
         def _run_obs_eval(
             epoch: int,
@@ -713,6 +740,8 @@ class SnapTrainer:
             recent_addr: list,
             recent_hinge: list,
             recent_mse: list,
+            recent_soft_hard: list,
+            recent_target_prob: list,
         ) -> SnapObsCheckpoint | None:
             nonlocal best_fragmentation, best_separation, best_hamming_gap, best_zero_fp_recall, best_zero_fp_threshold, best_global_step
             t0 = time.perf_counter()
@@ -775,6 +804,9 @@ class SnapTrainer:
                 elapsed_sec=round(time.perf_counter() - training_start, 1),
                 address_hinge_loss_recent=round(float(np.mean(recent_hinge)) if recent_hinge else 0.0, 4),
                 address_mse_loss_recent=round(float(np.mean(recent_mse)) if recent_mse else 0.0, 4),
+                soft_hard_loss_recent=round(float(np.mean(recent_soft_hard)) if recent_soft_hard else 0.0, 4),
+                target_cell_probability_recent=round(float(np.mean(recent_target_prob)) if recent_target_prob else 0.0, 4),
+                soft_hard_temperature=round(float(loss_fn.soft_hard_temperature), 6),
                 paraphrase_hamming_mean=obs["paraphrase_hamming_mean"],
                 near_miss_hamming_mean=obs["near_miss_hamming_mean"],
             )
@@ -799,6 +831,9 @@ class SnapTrainer:
                 "train_loss_recent": ckpt.train_loss_recent,
                 "address_hinge_loss_recent": ckpt.address_hinge_loss_recent,
                 "address_mse_loss_recent": ckpt.address_mse_loss_recent,
+                "soft_hard_loss_recent": ckpt.soft_hard_loss_recent,
+                "target_cell_probability_recent": ckpt.target_cell_probability_recent,
+                "soft_hard_temperature": ckpt.soft_hard_temperature,
                 "trend": trend,
                 "is_best": is_best,
                 "obs_eval_sec": obs_sec,
@@ -817,10 +852,14 @@ class SnapTrainer:
             epoch_contrastive: list[float] = []
             epoch_address_hinge: list[float] = []
             epoch_address_mse: list[float] = []
+            epoch_soft_hard: list[float] = []
+            epoch_target_prob: list[float] = []
             recent_losses: list[float] = []
             recent_addr: list[float] = []
             recent_hinge: list[float] = []
             recent_mse: list[float] = []
+            recent_soft_hard: list[float] = []
+            recent_target_prob: list[float] = []
             total_batches = max(1, (n + config.batch_size - 1) // config.batch_size)
             step_in_epoch = 0
 
@@ -832,6 +871,7 @@ class SnapTrainer:
                 neg_texts = _select_batch_negatives(batch, epoch=epoch) if config.lambda_negative > 0 else []
 
                 with torch.autocast(device_type=train_device.type, dtype=torch.float16, enabled=use_amp):
+                    loss_fn.soft_hard_temperature = _soft_hard_temperature(global_step)
                     q_emb = _encode_trainable_texts(self.encoder, queries, device=train_device, d_model=self.d_model)
                     p_emb = _encode_trainable_texts(self.encoder, positives, device=train_device, d_model=self.d_model)
                     n_emb = (
@@ -858,15 +898,21 @@ class SnapTrainer:
                     epoch_contrastive.append(float(out.contrastive.detach()))
                     epoch_address_hinge.append(float(out.address_hinge.detach()))
                     epoch_address_mse.append(float(out.address_mse.detach()))
+                    epoch_soft_hard.append(float(out.soft_hard.detach()))
+                    epoch_target_prob.append(float(out.target_cell_probability.detach()))
                     recent_losses.append(float(out.total.detach()))
                     recent_addr.append(float(out.address.detach()))
                     recent_hinge.append(float(out.address_hinge.detach()))
                     recent_mse.append(float(out.address_mse.detach()))
+                    recent_soft_hard.append(float(out.soft_hard.detach()))
+                    recent_target_prob.append(float(out.target_cell_probability.detach()))
                     if len(recent_losses) > config.obs_eval_every_steps:
                         recent_losses.pop(0)
                         recent_addr.pop(0)
                         recent_hinge.pop(0)
                         recent_mse.pop(0)
+                        recent_soft_hard.pop(0)
+                        recent_target_prob.pop(0)
 
                     if config.log_every_batches and (batch_num % (config.log_every_batches * config.gradient_accumulation_steps) == 0):
                         _log({
@@ -879,11 +925,23 @@ class SnapTrainer:
                             "address_loss": round(float(out.address.detach()), 4),
                             "address_hinge_loss": round(float(out.address_hinge.detach()), 4),
                             "address_mse_loss": round(float(out.address_mse.detach()), 4),
+                            "soft_hard_loss": round(float(out.soft_hard.detach()), 4),
+                            "target_cell_probability": round(float(out.target_cell_probability.detach()), 4),
+                            "soft_hard_temperature": round(float(loss_fn.soft_hard_temperature), 6),
                             "elapsed_sec": round(time.perf_counter() - epoch_started, 1),
                         })
 
                     if global_step % config.obs_eval_every_steps == 0:
-                        ckpt = _run_obs_eval(epoch, step_in_epoch, recent_losses, recent_addr, recent_hinge, recent_mse)
+                        ckpt = _run_obs_eval(
+                            epoch,
+                            step_in_epoch,
+                            recent_losses,
+                            recent_addr,
+                            recent_hinge,
+                            recent_mse,
+                            recent_soft_hard,
+                            recent_target_prob,
+                        )
                         if ckpt is not None:
                             obs_checkpoints.append(ckpt)
                             both_pass = (
@@ -907,12 +965,23 @@ class SnapTrainer:
                     epoch_contrastive.append(float(out.contrastive.detach()))
                     epoch_address_hinge.append(float(out.address_hinge.detach()))
                     epoch_address_mse.append(float(out.address_mse.detach()))
+                    epoch_soft_hard.append(float(out.soft_hard.detach()))
+                    epoch_target_prob.append(float(out.target_cell_probability.detach()))
 
                 if reached_target:
                     break
 
             # End-of-epoch eval
-            ckpt = _run_obs_eval(epoch, step_in_epoch, recent_losses, recent_addr, recent_hinge, recent_mse)
+            ckpt = _run_obs_eval(
+                epoch,
+                step_in_epoch,
+                recent_losses,
+                recent_addr,
+                recent_hinge,
+                recent_mse,
+                recent_soft_hard,
+                recent_target_prob,
+            )
             if ckpt is not None:
                 obs_checkpoints.append(ckpt)
                 if not reached_target:
@@ -953,6 +1022,9 @@ class SnapTrainer:
                 is_best=(last_obs.is_best if last_obs else False),
                 address_hinge_loss=round(float(np.mean(epoch_address_hinge)) if epoch_address_hinge else 0.0, 6),
                 address_mse_loss=round(float(np.mean(epoch_address_mse)) if epoch_address_mse else 0.0, 6),
+                soft_hard_loss=round(float(np.mean(epoch_soft_hard)) if epoch_soft_hard else 0.0, 6),
+                target_cell_probability=round(float(np.mean(epoch_target_prob)) if epoch_target_prob else 0.0, 6),
+                soft_hard_temperature=round(float(loss_fn.soft_hard_temperature), 6),
                 paraphrase_hamming_mean=last_obs.paraphrase_hamming_mean if last_obs else 0.0,
                 near_miss_hamming_mean=last_obs.near_miss_hamming_mean if last_obs else 0.0,
             )
@@ -966,6 +1038,9 @@ class SnapTrainer:
                 "address_loss": epoch_m.address_loss,
                 "address_hinge_loss": epoch_m.address_hinge_loss,
                 "address_mse_loss": epoch_m.address_mse_loss,
+                "soft_hard_loss": epoch_m.soft_hard_loss,
+                "target_cell_probability": epoch_m.target_cell_probability,
+                "soft_hard_temperature": epoch_m.soft_hard_temperature,
                 "mean_fragmentation_score": epoch_m.mean_fragmentation_score,
                 "separation_score": epoch_m.separation_score,
                 "hamming_gap": epoch_m.hamming_gap,
@@ -999,6 +1074,10 @@ class SnapTrainer:
                 "lambda_address_hinge": config.lambda_address_hinge,
                 "address_hinge_margin": config.address_hinge_margin,
                 "lambda_address_mse": config.lambda_address_mse,
+                "lambda_soft_hard": config.lambda_soft_hard,
+                "soft_hard_temperature_start": config.soft_hard_temperature_start,
+                "soft_hard_temperature_end": config.soft_hard_temperature_end,
+                "soft_hard_straight_through": config.soft_hard_straight_through,
                 "epochs_trained": len(epoch_metrics_all),
                 "best_global_step": best_global_step,
                 "best_fragmentation_score": round(best_fragmentation, 4),
@@ -1018,6 +1097,9 @@ class SnapTrainer:
                         "address_loss": m.address_loss,
                         "address_hinge_loss": m.address_hinge_loss,
                         "address_mse_loss": m.address_mse_loss,
+                        "soft_hard_loss": m.soft_hard_loss,
+                        "target_cell_probability": m.target_cell_probability,
+                        "soft_hard_temperature": m.soft_hard_temperature,
                         "mean_fragmentation_score": m.mean_fragmentation_score,
                         "separation_score": m.separation_score,
                         "hamming_gap": m.hamming_gap,
@@ -1047,6 +1129,9 @@ class SnapTrainer:
                         "is_best": c.is_best,
                         "address_hinge_loss_recent": c.address_hinge_loss_recent,
                         "address_mse_loss_recent": c.address_mse_loss_recent,
+                        "soft_hard_loss_recent": c.soft_hard_loss_recent,
+                        "target_cell_probability_recent": c.target_cell_probability_recent,
+                        "soft_hard_temperature": c.soft_hard_temperature,
                     }
                     for c in obs_checkpoints
                 ],
