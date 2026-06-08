@@ -1,0 +1,872 @@
+{
+  "artifact_type": "latticememory_exact_snap_block_audit",
+  "artifact_version": 1,
+  "clusters": [
+    {
+      "cluster_name": "refund_policy",
+      "exact_same_key_rate": 0.0,
+      "mean_correct_blocks": 74.25,
+      "mean_hamming": 53.75,
+      "n_blocks": 128,
+      "n_pairs": 4,
+      "repeated_wrong_blocks": [
+        {
+          "block": 18,
+          "wrong_count": 4
+        },
+        {
+          "block": 24,
+          "wrong_count": 4
+        },
+        {
+          "block": 62,
+          "wrong_count": 4
+        },
+        {
+          "block": 65,
+          "wrong_count": 4
+        },
+        {
+          "block": 67,
+          "wrong_count": 4
+        },
+        {
+          "block": 71,
+          "wrong_count": 4
+        },
+        {
+          "block": 75,
+          "wrong_count": 4
+        },
+        {
+          "block": 78,
+          "wrong_count": 4
+        },
+        {
+          "block": 84,
+          "wrong_count": 4
+        },
+        {
+          "block": 88,
+          "wrong_count": 4
+        },
+        {
+          "block": 103,
+          "wrong_count": 4
+        },
+        {
+          "block": 105,
+          "wrong_count": 4
+        },
+        {
+          "block": 108,
+          "wrong_count": 4
+        },
+        {
+          "block": 110,
+          "wrong_count": 4
+        },
+        {
+          "block": 111,
+          "wrong_count": 4
+        },
+        {
+          "block": 116,
+          "wrong_count": 4
+        },
+        {
+          "block": 118,
+          "wrong_count": 4
+        },
+        {
+          "block": 123,
+          "wrong_count": 4
+        },
+        {
+          "block": 21,
+          "wrong_count": 3
+        },
+        {
+          "block": 22,
+          "wrong_count": 3
+        }
+      ],
+      "worst_blocks": [
+        {
+          "block": 18,
+          "mean_target_probability": 0.001847
+        },
+        {
+          "block": 75,
+          "mean_target_probability": 0.003342
+        },
+        {
+          "block": 22,
+          "mean_target_probability": 0.003351
+        },
+        {
+          "block": 84,
+          "mean_target_probability": 0.004391
+        },
+        {
+          "block": 13,
+          "mean_target_probability": 0.008589
+        },
+        {
+          "block": 24,
+          "mean_target_probability": 0.011288
+        },
+        {
+          "block": 51,
+          "mean_target_probability": 0.018321
+        },
+        {
+          "block": 118,
+          "mean_target_probability": 0.022749
+        },
+        {
+          "block": 116,
+          "mean_target_probability": 0.024374
+        },
+        {
+          "block": 83,
+          "mean_target_probability": 0.029527
+        },
+        {
+          "block": 35,
+          "mean_target_probability": 0.033178
+        },
+        {
+          "block": 111,
+          "mean_target_probability": 0.039457
+        },
+        {
+          "block": 65,
+          "mean_target_probability": 0.062164
+        },
+        {
+          "block": 67,
+          "mean_target_probability": 0.07193
+        },
+        {
+          "block": 103,
+          "mean_target_probability": 0.079197
+        },
+        {
+          "block": 64,
+          "mean_target_probability": 0.083144
+        },
+        {
+          "block": 78,
+          "mean_target_probability": 0.096782
+        },
+        {
+          "block": 105,
+          "mean_target_probability": 0.098596
+        },
+        {
+          "block": 89,
+          "mean_target_probability": 0.116433
+        },
+        {
+          "block": 71,
+          "mean_target_probability": 0.119161
+        }
+      ]
+    },
+    {
+      "cluster_name": "order_status",
+      "exact_same_key_rate": 0.0,
+      "mean_correct_blocks": 96.0,
+      "mean_hamming": 32.0,
+      "n_blocks": 128,
+      "n_pairs": 4,
+      "repeated_wrong_blocks": [
+        {
+          "block": 9,
+          "wrong_count": 4
+        },
+        {
+          "block": 14,
+          "wrong_count": 4
+        },
+        {
+          "block": 16,
+          "wrong_count": 4
+        },
+        {
+          "block": 19,
+          "wrong_count": 4
+        },
+        {
+          "block": 29,
+          "wrong_count": 4
+        },
+        {
+          "block": 48,
+          "wrong_count": 4
+        },
+        {
+          "block": 58,
+          "wrong_count": 4
+        },
+        {
+          "block": 67,
+          "wrong_count": 4
+        },
+        {
+          "block": 97,
+          "wrong_count": 4
+        },
+        {
+          "block": 100,
+          "wrong_count": 4
+        },
+        {
+          "block": 105,
+          "wrong_count": 4
+        },
+        {
+          "block": 112,
+          "wrong_count": 4
+        },
+        {
+          "block": 18,
+          "wrong_count": 3
+        },
+        {
+          "block": 37,
+          "wrong_count": 3
+        },
+        {
+          "block": 49,
+          "wrong_count": 3
+        },
+        {
+          "block": 56,
+          "wrong_count": 3
+        },
+        {
+          "block": 71,
+          "wrong_count": 3
+        },
+        {
+          "block": 72,
+          "wrong_count": 3
+        },
+        {
+          "block": 73,
+          "wrong_count": 3
+        },
+        {
+          "block": 79,
+          "wrong_count": 3
+        }
+      ],
+      "worst_blocks": [
+        {
+          "block": 19,
+          "mean_target_probability": 0.003491
+        },
+        {
+          "block": 9,
+          "mean_target_probability": 0.005087
+        },
+        {
+          "block": 43,
+          "mean_target_probability": 0.005896
+        },
+        {
+          "block": 14,
+          "mean_target_probability": 0.006681
+        },
+        {
+          "block": 18,
+          "mean_target_probability": 0.022939
+        },
+        {
+          "block": 30,
+          "mean_target_probability": 0.028875
+        },
+        {
+          "block": 71,
+          "mean_target_probability": 0.033532
+        },
+        {
+          "block": 100,
+          "mean_target_probability": 0.045189
+        },
+        {
+          "block": 48,
+          "mean_target_probability": 0.069672
+        },
+        {
+          "block": 112,
+          "mean_target_probability": 0.07285
+        },
+        {
+          "block": 68,
+          "mean_target_probability": 0.078862
+        },
+        {
+          "block": 67,
+          "mean_target_probability": 0.098086
+        },
+        {
+          "block": 86,
+          "mean_target_probability": 0.105383
+        },
+        {
+          "block": 58,
+          "mean_target_probability": 0.108242
+        },
+        {
+          "block": 105,
+          "mean_target_probability": 0.113636
+        },
+        {
+          "block": 72,
+          "mean_target_probability": 0.139536
+        },
+        {
+          "block": 29,
+          "mean_target_probability": 0.160463
+        },
+        {
+          "block": 16,
+          "mean_target_probability": 0.161097
+        },
+        {
+          "block": 97,
+          "mean_target_probability": 0.164129
+        },
+        {
+          "block": 79,
+          "mean_target_probability": 0.170679
+        }
+      ]
+    },
+    {
+      "cluster_name": "reset_password",
+      "exact_same_key_rate": 0.0,
+      "mean_correct_blocks": 75.0,
+      "mean_hamming": 53.0,
+      "n_blocks": 128,
+      "n_pairs": 4,
+      "repeated_wrong_blocks": [
+        {
+          "block": 44,
+          "wrong_count": 4
+        },
+        {
+          "block": 45,
+          "wrong_count": 4
+        },
+        {
+          "block": 46,
+          "wrong_count": 4
+        },
+        {
+          "block": 49,
+          "wrong_count": 4
+        },
+        {
+          "block": 51,
+          "wrong_count": 4
+        },
+        {
+          "block": 55,
+          "wrong_count": 4
+        },
+        {
+          "block": 58,
+          "wrong_count": 4
+        },
+        {
+          "block": 61,
+          "wrong_count": 4
+        },
+        {
+          "block": 82,
+          "wrong_count": 4
+        },
+        {
+          "block": 102,
+          "wrong_count": 4
+        },
+        {
+          "block": 107,
+          "wrong_count": 4
+        },
+        {
+          "block": 115,
+          "wrong_count": 4
+        },
+        {
+          "block": 121,
+          "wrong_count": 4
+        },
+        {
+          "block": 123,
+          "wrong_count": 4
+        },
+        {
+          "block": 124,
+          "wrong_count": 4
+        },
+        {
+          "block": 126,
+          "wrong_count": 4
+        },
+        {
+          "block": 2,
+          "wrong_count": 3
+        },
+        {
+          "block": 6,
+          "wrong_count": 3
+        },
+        {
+          "block": 10,
+          "wrong_count": 3
+        },
+        {
+          "block": 14,
+          "wrong_count": 3
+        }
+      ],
+      "worst_blocks": [
+        {
+          "block": 10,
+          "mean_target_probability": 0.000787
+        },
+        {
+          "block": 51,
+          "mean_target_probability": 0.003638
+        },
+        {
+          "block": 55,
+          "mean_target_probability": 0.007767
+        },
+        {
+          "block": 90,
+          "mean_target_probability": 0.008376
+        },
+        {
+          "block": 123,
+          "mean_target_probability": 0.010769
+        },
+        {
+          "block": 7,
+          "mean_target_probability": 0.013864
+        },
+        {
+          "block": 115,
+          "mean_target_probability": 0.021427
+        },
+        {
+          "block": 121,
+          "mean_target_probability": 0.035819
+        },
+        {
+          "block": 119,
+          "mean_target_probability": 0.036128
+        },
+        {
+          "block": 61,
+          "mean_target_probability": 0.037968
+        },
+        {
+          "block": 124,
+          "mean_target_probability": 0.044907
+        },
+        {
+          "block": 92,
+          "mean_target_probability": 0.048178
+        },
+        {
+          "block": 44,
+          "mean_target_probability": 0.049168
+        },
+        {
+          "block": 49,
+          "mean_target_probability": 0.062914
+        },
+        {
+          "block": 46,
+          "mean_target_probability": 0.079418
+        },
+        {
+          "block": 22,
+          "mean_target_probability": 0.08399
+        },
+        {
+          "block": 23,
+          "mean_target_probability": 0.095171
+        },
+        {
+          "block": 58,
+          "mean_target_probability": 0.104614
+        },
+        {
+          "block": 72,
+          "mean_target_probability": 0.122864
+        },
+        {
+          "block": 45,
+          "mean_target_probability": 0.12576
+        }
+      ]
+    },
+    {
+      "cluster_name": "opening_hours",
+      "exact_same_key_rate": 0.0,
+      "mean_correct_blocks": 76.5,
+      "mean_hamming": 51.5,
+      "n_blocks": 128,
+      "n_pairs": 4,
+      "repeated_wrong_blocks": [
+        {
+          "block": 14,
+          "wrong_count": 4
+        },
+        {
+          "block": 22,
+          "wrong_count": 4
+        },
+        {
+          "block": 23,
+          "wrong_count": 4
+        },
+        {
+          "block": 27,
+          "wrong_count": 4
+        },
+        {
+          "block": 36,
+          "wrong_count": 4
+        },
+        {
+          "block": 40,
+          "wrong_count": 4
+        },
+        {
+          "block": 43,
+          "wrong_count": 4
+        },
+        {
+          "block": 44,
+          "wrong_count": 4
+        },
+        {
+          "block": 73,
+          "wrong_count": 4
+        },
+        {
+          "block": 86,
+          "wrong_count": 4
+        },
+        {
+          "block": 89,
+          "wrong_count": 4
+        },
+        {
+          "block": 105,
+          "wrong_count": 4
+        },
+        {
+          "block": 117,
+          "wrong_count": 4
+        },
+        {
+          "block": 10,
+          "wrong_count": 3
+        },
+        {
+          "block": 19,
+          "wrong_count": 3
+        },
+        {
+          "block": 26,
+          "wrong_count": 3
+        },
+        {
+          "block": 28,
+          "wrong_count": 3
+        },
+        {
+          "block": 45,
+          "wrong_count": 3
+        },
+        {
+          "block": 54,
+          "wrong_count": 3
+        },
+        {
+          "block": 65,
+          "wrong_count": 3
+        }
+      ],
+      "worst_blocks": [
+        {
+          "block": 38,
+          "mean_target_probability": 0.001394
+        },
+        {
+          "block": 28,
+          "mean_target_probability": 0.00178
+        },
+        {
+          "block": 44,
+          "mean_target_probability": 0.002535
+        },
+        {
+          "block": 45,
+          "mean_target_probability": 0.030658
+        },
+        {
+          "block": 95,
+          "mean_target_probability": 0.030775
+        },
+        {
+          "block": 35,
+          "mean_target_probability": 0.033173
+        },
+        {
+          "block": 36,
+          "mean_target_probability": 0.033175
+        },
+        {
+          "block": 64,
+          "mean_target_probability": 0.037127
+        },
+        {
+          "block": 117,
+          "mean_target_probability": 0.048922
+        },
+        {
+          "block": 115,
+          "mean_target_probability": 0.051697
+        },
+        {
+          "block": 40,
+          "mean_target_probability": 0.081814
+        },
+        {
+          "block": 43,
+          "mean_target_probability": 0.090031
+        },
+        {
+          "block": 14,
+          "mean_target_probability": 0.111567
+        },
+        {
+          "block": 27,
+          "mean_target_probability": 0.126879
+        },
+        {
+          "block": 86,
+          "mean_target_probability": 0.132472
+        },
+        {
+          "block": 89,
+          "mean_target_probability": 0.135794
+        },
+        {
+          "block": 102,
+          "mean_target_probability": 0.147244
+        },
+        {
+          "block": 26,
+          "mean_target_probability": 0.148331
+        },
+        {
+          "block": 105,
+          "mean_target_probability": 0.155097
+        },
+        {
+          "block": 10,
+          "mean_target_probability": 0.167341
+        }
+      ]
+    },
+    {
+      "cluster_name": "cancel_subscription",
+      "exact_same_key_rate": 0.0,
+      "mean_correct_blocks": 81.0,
+      "mean_hamming": 47.0,
+      "n_blocks": 128,
+      "n_pairs": 4,
+      "repeated_wrong_blocks": [
+        {
+          "block": 1,
+          "wrong_count": 4
+        },
+        {
+          "block": 33,
+          "wrong_count": 4
+        },
+        {
+          "block": 34,
+          "wrong_count": 4
+        },
+        {
+          "block": 42,
+          "wrong_count": 4
+        },
+        {
+          "block": 60,
+          "wrong_count": 4
+        },
+        {
+          "block": 108,
+          "wrong_count": 4
+        },
+        {
+          "block": 114,
+          "wrong_count": 4
+        },
+        {
+          "block": 121,
+          "wrong_count": 4
+        },
+        {
+          "block": 0,
+          "wrong_count": 3
+        },
+        {
+          "block": 2,
+          "wrong_count": 3
+        },
+        {
+          "block": 7,
+          "wrong_count": 3
+        },
+        {
+          "block": 17,
+          "wrong_count": 3
+        },
+        {
+          "block": 27,
+          "wrong_count": 3
+        },
+        {
+          "block": 28,
+          "wrong_count": 3
+        },
+        {
+          "block": 31,
+          "wrong_count": 3
+        },
+        {
+          "block": 35,
+          "wrong_count": 3
+        },
+        {
+          "block": 38,
+          "wrong_count": 3
+        },
+        {
+          "block": 39,
+          "wrong_count": 3
+        },
+        {
+          "block": 43,
+          "wrong_count": 3
+        },
+        {
+          "block": 46,
+          "wrong_count": 3
+        }
+      ],
+      "worst_blocks": [
+        {
+          "block": 75,
+          "mean_target_probability": 0.001822
+        },
+        {
+          "block": 93,
+          "mean_target_probability": 0.008788
+        },
+        {
+          "block": 56,
+          "mean_target_probability": 0.014927
+        },
+        {
+          "block": 32,
+          "mean_target_probability": 0.017908
+        },
+        {
+          "block": 108,
+          "mean_target_probability": 0.021438
+        },
+        {
+          "block": 121,
+          "mean_target_probability": 0.022675
+        },
+        {
+          "block": 60,
+          "mean_target_probability": 0.023139
+        },
+        {
+          "block": 114,
+          "mean_target_probability": 0.038281
+        },
+        {
+          "block": 16,
+          "mean_target_probability": 0.050105
+        },
+        {
+          "block": 33,
+          "mean_target_probability": 0.127495
+        },
+        {
+          "block": 80,
+          "mean_target_probability": 0.135627
+        },
+        {
+          "block": 34,
+          "mean_target_probability": 0.144853
+        },
+        {
+          "block": 109,
+          "mean_target_probability": 0.170922
+        },
+        {
+          "block": 1,
+          "mean_target_probability": 0.172627
+        },
+        {
+          "block": 7,
+          "mean_target_probability": 0.174508
+        },
+        {
+          "block": 70,
+          "mean_target_probability": 0.178314
+        },
+        {
+          "block": 68,
+          "mean_target_probability": 0.18598
+        },
+        {
+          "block": 54,
+          "mean_target_probability": 0.18799
+        },
+        {
+          "block": 72,
+          "mean_target_probability": 0.193604
+        },
+        {
+          "block": 28,
+          "mean_target_probability": 0.19583
+        }
+      ]
+    }
+  ],
+  "d_model": 1024,
+  "mean_correct_blocks": 80.55,
+  "mean_exact_same_key_rate": 0.0,
+  "mean_hamming": 47.45,
+  "model": "benchmarks\\results\\snap_soft_hard_from_best_1ep\\best_snap_encoder",
+  "temperature": 0.05
+}

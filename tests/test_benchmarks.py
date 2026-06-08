@@ -431,3 +431,26 @@ def test_canonical_key_training_builds_intent_rows():
         {"intent_id": "cancel", "prompt": "turn off renewal", "target": "cancel subscription"},
         {"intent_id": "pause", "prompt": "pause renewal", "target": "pause subscription"},
     ]
+
+
+def test_exact_snap_block_audit_schema():
+    from benchmarks.benchmark_exact_snap_block_audit import summarize_exact_snap_blocks
+
+    query_keys = [[1, 2, 3, 4], [1, 2, 0, 4]]
+    target_keys = [[1, 9, 3, 4], [1, 2, 3, 5]]
+    target_probs = [[0.9, 0.1, 0.8, 0.7], [0.95, 0.92, 0.2, 0.3]]
+
+    report = summarize_exact_snap_blocks(
+        query_keys=query_keys,
+        target_keys=target_keys,
+        target_probabilities=target_probs,
+        cluster_name="refund_policy",
+    )
+
+    assert report["cluster_name"] == "refund_policy"
+    assert report["n_pairs"] == 2
+    assert report["exact_same_key_rate"] == 0.0
+    assert report["mean_hamming"] == 1.5
+    assert report["mean_correct_blocks"] == 2.5
+    assert report["worst_blocks"][0]["block"] in {1, 2, 3}
+    assert "repeated_wrong_blocks" in report
