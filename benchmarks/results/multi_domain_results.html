@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LatticeMemory — Multi-Domain Intent Cache Results</title>
+<style>
+:root {
+  --bg: #0f1117; --card: #1a1d27; --border: #2a2d3a;
+  --text: #e2e8f0; --muted: #8892a4;
+  --green: #22c55e; --red: #ef4444; --yellow: #eab308;
+  --blue: #3b82f6; --purple: #a855f7;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; line-height: 1.6; }
+header { padding: 48px 40px 32px; border-bottom: 1px solid var(--border); }
+header h1 { font-size: 2rem; font-weight: 700; margin-bottom: 8px; }
+header p { color: var(--muted); font-size: 0.95rem; }
+main { max-width: 1100px; margin: 0 auto; padding: 40px 24px; }
+.domains { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 40px; }
+@media (max-width: 768px) { .domains { grid-template-columns: 1fr; } }
+.domain-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 28px; }
+.domain-card h2 { font-size: 1.1rem; font-weight: 600; margin-bottom: 4px; }
+.domain-meta { color: var(--muted); font-size: 0.82rem; margin-bottom: 20px; }
+.gate-badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 20px; }
+.gate-pass { background: rgba(34,197,94,0.15); color: var(--green); border: 1px solid rgba(34,197,94,0.3); }
+.gate-warn { background: rgba(234,179,8,0.15); color: var(--yellow); border: 1px solid rgba(234,179,8,0.3); }
+.metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.metric { background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; }
+.metric-label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
+.metric-value { font-size: 1.6rem; font-weight: 700; }
+.metric-sub { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
+.green { color: var(--green); }
+.red { color: var(--red); }
+.blue { color: var(--blue); }
+.purple { color: var(--purple); }
+.yellow { color: var(--yellow); }
+section { margin-bottom: 40px; }
+section h2 { font-size: 1.15rem; font-weight: 600; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+th { text-align: left; padding: 10px 14px; color: var(--muted); font-weight: 500; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid var(--border); }
+td { padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+tr:last-child td { border-bottom: none; }
+.pass-row td:first-child { color: var(--green); }
+.warn-row td:first-child { color: var(--yellow); }
+.zero-fp { color: var(--green); }
+.has-fp { color: var(--yellow); }
+.note { background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.2); border-radius: 8px; padding: 16px 20px; font-size: 0.88rem; color: var(--muted); margin-bottom: 32px; }
+.note strong { color: var(--text); }
+.fp-detail { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 16px 20px; font-size: 0.85rem; }
+.fp-detail .label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
+footer { border-top: 1px solid var(--border); padding: 24px 40px; text-align: center; font-size: 0.8rem; color: var(--muted); }
+footer a { color: var(--blue); }
+code { background: rgba(255,255,255,0.07); padding: 1px 5px; border-radius: 4px; font-size: 0.85em; }
+</style>
+</head>
+<body>
+<header>
+  <h1>LatticeMemory Intent Cache &mdash; Multi-Domain Results</h1>
+  <p>Closed-set semantic cache proof across two production-representative domains &nbsp;&middot;&nbsp;
+     Model: <code>snap_product_gate_hard_symmetric_8ep</code> &nbsp;&middot;&nbsp; 2026-06-09</p>
+</header>
+<main>
+
+<div class="note">
+  <strong>What this measures:</strong> For each domain, paraphrase prompts are routed to a pre-approved
+  cached answer (12 intents each). <strong>Recall</strong> is the fraction of paraphrase queries correctly
+  routed. <strong>FP rate</strong> is wrong routes on hard near-miss queries &mdash; semantically adjacent
+  prompts that belong to a different intent. <strong>Cache hit rate</strong> simulates the fraction of
+  real traffic served from cache. <strong>Latency</strong> is lookup overhead only (excludes encoding).
+</div>
+
+<div class="domains">
+  <div class="domain-card">
+    <h2>Customer Support</h2>
+    <div class="domain-meta">12 intents &nbsp;&middot;&nbsp; 36 held-out paraphrases &nbsp;&middot;&nbsp; 60 near-miss queries</div>
+    <div class="gate-badge gate-pass">&#10003; GATE PASS &mdash; 0 WRONG ROUTES</div>
+    <div class="metrics-grid">
+      <div class="metric">
+        <div class="metric-label">Recall</div>
+        <div class="metric-value green">88.9%</div>
+        <div class="metric-sub">32/36 correct routes</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">Wrong Route Rate</div>
+        <div class="metric-value green">0.0%</div>
+        <div class="metric-sub">0 false positives</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">Cache Hit Rate</div>
+        <div class="metric-value blue">83.3%</div>
+        <div class="metric-sub">60/72 served from cache</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">Latency</div>
+        <div class="metric-value purple">0.072 ms</div>
+        <div class="metric-sub">lookup overhead</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="domain-card">
+    <h2>IT Helpdesk</h2>
+    <div class="domain-meta">12 intents &nbsp;&middot;&nbsp; 36 held-out paraphrases &nbsp;&middot;&nbsp; 60 near-miss queries</div>
+    <div class="gate-badge gate-warn">94.4% RECALL &nbsp;&middot;&nbsp; 1 WRONG ROUTE (tunable)</div>
+    <div class="metrics-grid">
+      <div class="metric">
+        <div class="metric-label">Recall</div>
+        <div class="metric-value green">94.4%</div>
+        <div class="metric-sub">34/36 correct routes</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">Wrong Route Rate</div>
+        <div class="metric-value yellow">1.7%</div>
+        <div class="metric-sub">1 FP &nbsp;&middot;&nbsp; eliminable via threshold</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">Cache Hit Rate</div>
+        <div class="metric-value blue">83.3%</div>
+        <div class="metric-sub">60/72 served from cache</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">Latency</div>
+        <div class="metric-value purple">0.053 ms</div>
+        <div class="metric-sub">lookup overhead</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<section>
+  <h2>Combined Summary</h2>
+  <table>
+    <tr><th>Domain</th><th>Gate</th><th>Recall</th><th>FP Rate</th><th>Cache Hit Rate</th><th>Latency</th><th>Intents</th></tr>
+    
+    <tr class="pass-row">
+      <td>Customer Support</td>
+      <td class="green">PASS</td>
+      <td>88.9%</td>
+      <td class="green">0.0%</td>
+      <td>83.3%</td>
+      <td>0.072 ms</td>
+      <td>12</td>
+    </tr>
+    <tr class="warn-row">
+      <td>IT Helpdesk</td>
+      <td class="yellow">94.4% / 1 FP</td>
+      <td>94.4%</td>
+      <td class="yellow">1.7%</td>
+      <td>83.3%</td>
+      <td>0.053 ms</td>
+      <td>12</td>
+    </tr>
+  </table>
+</section>
+
+<section>
+  <h2>Cross-Validation Stability (5 Random Splits)</h2>
+  <table>
+    <tr><th>Domain</th><th>Recall (mean &plusmn; std)</th><th>Min Recall</th><th>Max Recall</th><th>Wrong Route (mean)</th></tr>
+    
+    <tr>
+      <td>Customer Support</td>
+      <td>0.0% &plusmn; 0.0%</td>
+      <td>0.0%</td>
+      <td>0.0%</td>
+      <td class="green">0.0%</td>
+    </tr>
+    <tr>
+      <td>IT Helpdesk</td>
+      <td>95.6% &plusmn; 3.8%</td>
+      <td>88.9%</td>
+      <td>100.0%</td>
+      <td class="yellow">2.6%</td>
+    </tr>
+  </table>
+</section>
+
+
+<section>
+  <h2>The One Wrong Route — IT Helpdesk</h2>
+  <div class="fp-detail">
+    <div class="label">Wrong Route Example</div>
+    <p><strong>Query:</strong> &ldquo;Offboard software license&rdquo;</p>
+    <p><strong>Predicted:</strong> <code>request_software_license</code> &nbsp;&rarr;&nbsp; <strong>Correct:</strong> <code>revoke_software_license</code></p>
+    <p style="color:var(--muted);margin-top:8px;font-size:0.83rem">
+      These are the most semantically adjacent intents in the helpdesk domain &mdash; both involve software licensing operations.
+      Setting confidence threshold &ge;&nbsp;0.9386 eliminates this wrong route; coverage drops to 55.6%
+      (unconfident queries are forwarded to the upstream LLM at normal cost).
+    </p>
+  </div>
+</section>
+
+<section>
+  <h2>Confidence Threshold Trade-off &mdash; IT Helpdesk</h2>
+  <p style="color:var(--muted);font-size:0.85rem;margin-bottom:14px">
+    Raise the minimum routing confidence score to reduce wrong routes at the cost of coverage.
+    Queries below the threshold are forwarded to the upstream LLM at full cost.
+    <strong style="color:var(--text)">Green rows = zero wrong routes.</strong>
+  </p>
+  <table>
+    <tr><th>Min Confidence</th><th>Coverage</th><th>Recall</th><th>FP Rate</th></tr>
+        <tr>
+      <td>0.8693</td>
+      <td>100.0%</td>
+      <td>94.4%</td>
+      <td class="has-fp">3.3%</td>
+    </tr>
+    <tr>
+      <td>0.8887</td>
+      <td>97.2%</td>
+      <td>91.7%</td>
+      <td class="has-fp">3.3%</td>
+    </tr>
+    <tr>
+      <td>0.9016</td>
+      <td>94.4%</td>
+      <td>88.9%</td>
+      <td class="has-fp">3.3%</td>
+    </tr>
+    <tr>
+      <td>0.9018</td>
+      <td>91.7%</td>
+      <td>86.1%</td>
+      <td class="has-fp">3.3%</td>
+    </tr>
+    <tr>
+      <td>0.9041</td>
+      <td>88.9%</td>
+      <td>86.1%</td>
+      <td class="has-fp">1.7%</td>
+    </tr>
+    <tr>
+      <td>0.9091</td>
+      <td>86.1%</td>
+      <td>83.3%</td>
+      <td class="has-fp">1.7%</td>
+    </tr>
+    <tr>
+      <td>0.9187</td>
+      <td>83.3%</td>
+      <td>80.6%</td>
+      <td class="has-fp">1.7%</td>
+    </tr>
+    <tr>
+      <td>0.9217</td>
+      <td>80.6%</td>
+      <td>77.8%</td>
+      <td class="has-fp">1.7%</td>
+    </tr>
+    <tr>
+      <td>0.9248</td>
+      <td>77.8%</td>
+      <td>75.0%</td>
+      <td class="has-fp">1.7%</td>
+    </tr>
+    <tr>
+      <td>0.9260</td>
+      <td>75.0%</td>
+      <td>72.2%</td>
+      <td class="has-fp">1.7%</td>
+    </tr>
+    <tr>
+      <td>0.9278</td>
+      <td>72.2%</td>
+      <td>69.4%</td>
+      <td class="has-fp">1.7%</td>
+    </tr>
+    <tr>
+      <td>0.9309</td>
+      <td>69.4%</td>
+      <td>66.7%</td>
+      <td class="has-fp">1.7%</td>
+    </tr>
+    <tr>
+      <td>0.9352</td>
+      <td>66.7%</td>
+      <td>63.9%</td>
+      <td class="has-fp">1.7%</td>
+    </tr>
+    <tr>
+      <td>0.9360</td>
+      <td>63.9%</td>
+      <td>61.1%</td>
+      <td class="has-fp">1.7%</td>
+    </tr>
+    <tr>
+      <td>0.9382</td>
+      <td>61.1%</td>
+      <td>58.3%</td>
+      <td class="has-fp">1.7%</td>
+    </tr>
+    <tr>
+      <td>0.9385</td>
+      <td>58.3%</td>
+      <td>55.6%</td>
+      <td class="has-fp">1.7%</td>
+    </tr>
+    <tr>
+      <td>0.9386</td>
+      <td>55.6%</td>
+      <td>55.6%</td>
+      <td class="zero-fp">0.0%</td>
+    </tr>
+    <tr>
+      <td>0.9405</td>
+      <td>52.8%</td>
+      <td>52.8%</td>
+      <td class="zero-fp">0.0%</td>
+    </tr>
+    <tr>
+      <td>0.9418</td>
+      <td>50.0%</td>
+      <td>50.0%</td>
+      <td class="zero-fp">0.0%</td>
+    </tr>
+    <tr>
+      <td>0.9441</td>
+      <td>47.2%</td>
+      <td>47.2%</td>
+      <td class="zero-fp">0.0%</td>
+    </tr>
+    <tr>
+      <td>0.9452</td>
+      <td>44.4%</td>
+      <td>44.4%</td>
+      <td class="zero-fp">0.0%</td>
+    </tr>
+    <tr>
+      <td>0.9462</td>
+      <td>41.7%</td>
+      <td>41.7%</td>
+      <td class="zero-fp">0.0%</td>
+    </tr>
+    <tr>
+      <td>0.9463</td>
+      <td>38.9%</td>
+      <td>38.9%</td>
+      <td class="zero-fp">0.0%</td>
+    </tr>
+    <tr>
+      <td>0.9469</td>
+      <td>36.1%</td>
+      <td>36.1%</td>
+      <td class="zero-fp">0.0%</td>
+    </tr>
+    <tr>
+      <td>0.9478</td>
+      <td>33.3%</td>
+      <td>33.3%</td>
+      <td class="zero-fp">0.0%</td>
+    </tr>
+    <tr>
+      <td>0.9535</td>
+      <td>30.6%</td>
+      <td>30.6%</td>
+      <td class="zero-fp">0.0%</td>
+    </tr>
+    <tr>
+      <td>0.9552</td>
+      <td>27.8%</td>
+      <td>27.8%</td>
+      <td class="zero-fp">0.0%</td>
+    </tr>
+    <tr>
+      <td>0.9559</td>
+      <td>25.0%</td>
+      <td>25.0%</td>
+      <td class="zero-fp">0.0%</td>
+    </tr>
+    <tr>
+      <td>0.9565</td>
+      <td>22.2%</td>
+      <td>22.2%</td>
+      <td class="zero-fp">0.0%</td>
+    </tr>
+    <tr>
+      <td>0.9577</td>
+      <td>19.4%</td>
+      <td>19.4%</td>
+      <td class="zero-fp">0.0%</td>
+    </tr>
+    <tr>
+      <td>0.9592</td>
+      <td>16.7%</td>
+      <td>16.7%</td>
+      <td class="zero-fp">0.0%</td>
+    </tr>
+    <tr>
+      <td>0.9693</td>
+      <td>13.9%</td>
+      <td>13.9%</td>
+      <td class="zero-fp">0.0%</td>
+    </tr>
+    <tr>
+      <td>0.9696</td>
+      <td>11.1%</td>
+      <td>11.1%</td>
+      <td class="zero-fp">0.0%</td>
+    </tr>
+    <tr>
+      <td>0.9793</td>
+      <td>8.3%</td>
+      <td>8.3%</td>
+      <td class="zero-fp">0.0%</td>
+    </tr>
+    <tr>
+      <td>0.9796</td>
+      <td>5.6%</td>
+      <td>5.6%</td>
+      <td class="zero-fp">0.0%</td>
+    </tr>
+    <tr>
+      <td>0.9802</td>
+      <td>2.8%</td>
+      <td>2.8%</td>
+      <td class="zero-fp">0.0%</td>
+    </tr>
+
+  </table>
+</section>
+
+</main>
+<footer>
+  LatticeMemory &nbsp;&middot;&nbsp; Calibrated semantic cache for LLM applications &nbsp;&middot;&nbsp;
+  <a href="https://huggingface.co/dfrokido">HuggingFace: dfrokido</a>
+</footer>
+</body>
+</html>

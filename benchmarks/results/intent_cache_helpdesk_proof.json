@@ -1,0 +1,352 @@
+{
+  "artifact_type": "latticememory_intent_cache_proof_results",
+  "artifact_version": 2,
+  "cache_simulation": {
+    "hit_rate": 0.8333,
+    "hits": 60,
+    "misses": 12,
+    "total_prompts": 72
+  },
+  "calibrated_threshold": "nearest_centroid",
+  "created_at": "2026-06-09T04:42:21.282186Z",
+  "d_model": 1024,
+  "distributions": {
+    "near_miss": {
+      "n": 60
+    },
+    "paraphrase": {
+      "n": 36
+    }
+  },
+  "domain": "hard_helpdesk_near_misses",
+  "fp_budget": 0.0,
+  "index": {
+    "centroid_bytes": 49152,
+    "compression_vs_float32_keys_only": 1.0,
+    "float32_embedding_bytes_equivalent": 49152,
+    "n_intents": 12,
+    "stored_key_bytes": 49152
+  },
+  "metrics": {
+    "held_out_false_positives": 1,
+    "held_out_fp_rate": 0.0167,
+    "held_out_recall": 0.9444,
+    "held_out_true_positives": 34,
+    "mean_latency_ms": 0.053,
+    "total_held_out_paraphrases": 36,
+    "total_near_miss_queries": 60
+  },
+  "model": "benchmarks/results/snap_product_gate_hard_symmetric_8ep/best_snap_encoder",
+  "near_miss_examples": [
+    {
+      "actual": "revoke_software_license",
+      "predicted": "request_software_license",
+      "query": "Offboard software license"
+    }
+  ],
+  "paraphrase_examples": [
+    {
+      "expected": "reset_vpn_access",
+      "predicted": "reset_vpn_access",
+      "query": "I need new VPN credentials",
+      "result": "correct"
+    },
+    {
+      "expected": "reset_vpn_access",
+      "predicted": "reset_vpn_access",
+      "query": "Reset my remote network access",
+      "result": "correct"
+    },
+    {
+      "expected": "reset_vpn_access",
+      "predicted": "reset_vpn_access",
+      "query": "Get VPN working again",
+      "result": "correct"
+    },
+    {
+      "expected": "request_new_laptop",
+      "predicted": "request_new_laptop",
+      "query": "Can I get a new machine?",
+      "result": "correct"
+    },
+    {
+      "expected": "request_new_laptop",
+      "predicted": "request_new_laptop",
+      "query": "Hardware request for a laptop",
+      "result": "correct"
+    }
+  ],
+  "product_gate": {
+    "exact_snap_required": false,
+    "fp_budget": 0.0,
+    "fragmentation_metric_role": "research_exact_snap",
+    "name": "intent_recall_at_zero_wrong_routes",
+    "passed": false,
+    "recall_target": 0.8056
+  },
+  "route_type": "closed_set_intent_centroid_cache",
+  "splits_summary": {
+    "cache_hit_rate": {
+      "max": 0.8333,
+      "mean": 0.8333,
+      "min": 0.8333,
+      "n_splits": 5,
+      "std": 0.0,
+      "values": [
+        0.8333,
+        0.8333,
+        0.8333,
+        0.8333,
+        0.8333
+      ]
+    },
+    "n_splits": 5,
+    "recall": {
+      "max": 1.0,
+      "mean": 0.9556,
+      "min": 0.8889,
+      "n_splits": 5,
+      "std": 0.0377,
+      "values": [
+        1.0,
+        0.9722,
+        0.8889,
+        0.9444,
+        0.9722
+      ]
+    },
+    "seed": 42,
+    "wrong_route_rate": {
+      "max": 0.0526,
+      "mean": 0.0263,
+      "min": 0.0,
+      "n_splits": 5,
+      "std": 0.0235,
+      "values": [
+        0.0263,
+        0.0,
+        0.0526,
+        0.0526,
+        0.0
+      ]
+    }
+  },
+  "threshold_curve": [
+    {
+      "coverage": 1.0,
+      "fp_rate": 0.0333,
+      "min_score_threshold": 0.8693,
+      "recall": 0.9444
+    },
+    {
+      "coverage": 0.9722,
+      "fp_rate": 0.0333,
+      "min_score_threshold": 0.8887,
+      "recall": 0.9167
+    },
+    {
+      "coverage": 0.9444,
+      "fp_rate": 0.0333,
+      "min_score_threshold": 0.9016,
+      "recall": 0.8889
+    },
+    {
+      "coverage": 0.9167,
+      "fp_rate": 0.0333,
+      "min_score_threshold": 0.9018,
+      "recall": 0.8611
+    },
+    {
+      "coverage": 0.8889,
+      "fp_rate": 0.0167,
+      "min_score_threshold": 0.9041,
+      "recall": 0.8611
+    },
+    {
+      "coverage": 0.8611,
+      "fp_rate": 0.0167,
+      "min_score_threshold": 0.9091,
+      "recall": 0.8333
+    },
+    {
+      "coverage": 0.8333,
+      "fp_rate": 0.0167,
+      "min_score_threshold": 0.9187,
+      "recall": 0.8056
+    },
+    {
+      "coverage": 0.8056,
+      "fp_rate": 0.0167,
+      "min_score_threshold": 0.9217,
+      "recall": 0.7778
+    },
+    {
+      "coverage": 0.7778,
+      "fp_rate": 0.0167,
+      "min_score_threshold": 0.9248,
+      "recall": 0.75
+    },
+    {
+      "coverage": 0.75,
+      "fp_rate": 0.0167,
+      "min_score_threshold": 0.926,
+      "recall": 0.7222
+    },
+    {
+      "coverage": 0.7222,
+      "fp_rate": 0.0167,
+      "min_score_threshold": 0.9278,
+      "recall": 0.6944
+    },
+    {
+      "coverage": 0.6944,
+      "fp_rate": 0.0167,
+      "min_score_threshold": 0.9309,
+      "recall": 0.6667
+    },
+    {
+      "coverage": 0.6667,
+      "fp_rate": 0.0167,
+      "min_score_threshold": 0.9352,
+      "recall": 0.6389
+    },
+    {
+      "coverage": 0.6389,
+      "fp_rate": 0.0167,
+      "min_score_threshold": 0.936,
+      "recall": 0.6111
+    },
+    {
+      "coverage": 0.6111,
+      "fp_rate": 0.0167,
+      "min_score_threshold": 0.9382,
+      "recall": 0.5833
+    },
+    {
+      "coverage": 0.5833,
+      "fp_rate": 0.0167,
+      "min_score_threshold": 0.9385,
+      "recall": 0.5556
+    },
+    {
+      "coverage": 0.5556,
+      "fp_rate": 0.0,
+      "min_score_threshold": 0.9386,
+      "recall": 0.5556
+    },
+    {
+      "coverage": 0.5278,
+      "fp_rate": 0.0,
+      "min_score_threshold": 0.9405,
+      "recall": 0.5278
+    },
+    {
+      "coverage": 0.5,
+      "fp_rate": 0.0,
+      "min_score_threshold": 0.9418,
+      "recall": 0.5
+    },
+    {
+      "coverage": 0.4722,
+      "fp_rate": 0.0,
+      "min_score_threshold": 0.9441,
+      "recall": 0.4722
+    },
+    {
+      "coverage": 0.4444,
+      "fp_rate": 0.0,
+      "min_score_threshold": 0.9452,
+      "recall": 0.4444
+    },
+    {
+      "coverage": 0.4167,
+      "fp_rate": 0.0,
+      "min_score_threshold": 0.9462,
+      "recall": 0.4167
+    },
+    {
+      "coverage": 0.3889,
+      "fp_rate": 0.0,
+      "min_score_threshold": 0.9463,
+      "recall": 0.3889
+    },
+    {
+      "coverage": 0.3611,
+      "fp_rate": 0.0,
+      "min_score_threshold": 0.9469,
+      "recall": 0.3611
+    },
+    {
+      "coverage": 0.3333,
+      "fp_rate": 0.0,
+      "min_score_threshold": 0.9478,
+      "recall": 0.3333
+    },
+    {
+      "coverage": 0.3056,
+      "fp_rate": 0.0,
+      "min_score_threshold": 0.9535,
+      "recall": 0.3056
+    },
+    {
+      "coverage": 0.2778,
+      "fp_rate": 0.0,
+      "min_score_threshold": 0.9552,
+      "recall": 0.2778
+    },
+    {
+      "coverage": 0.25,
+      "fp_rate": 0.0,
+      "min_score_threshold": 0.9559,
+      "recall": 0.25
+    },
+    {
+      "coverage": 0.2222,
+      "fp_rate": 0.0,
+      "min_score_threshold": 0.9565,
+      "recall": 0.2222
+    },
+    {
+      "coverage": 0.1944,
+      "fp_rate": 0.0,
+      "min_score_threshold": 0.9577,
+      "recall": 0.1944
+    },
+    {
+      "coverage": 0.1667,
+      "fp_rate": 0.0,
+      "min_score_threshold": 0.9592,
+      "recall": 0.1667
+    },
+    {
+      "coverage": 0.1389,
+      "fp_rate": 0.0,
+      "min_score_threshold": 0.9693,
+      "recall": 0.1389
+    },
+    {
+      "coverage": 0.1111,
+      "fp_rate": 0.0,
+      "min_score_threshold": 0.9696,
+      "recall": 0.1111
+    },
+    {
+      "coverage": 0.0833,
+      "fp_rate": 0.0,
+      "min_score_threshold": 0.9793,
+      "recall": 0.0833
+    },
+    {
+      "coverage": 0.0556,
+      "fp_rate": 0.0,
+      "min_score_threshold": 0.9796,
+      "recall": 0.0556
+    },
+    {
+      "coverage": 0.0278,
+      "fp_rate": 0.0,
+      "min_score_threshold": 0.9802,
+      "recall": 0.0278
+    }
+  ]
+}

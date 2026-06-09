@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LatticeMemory Intent Cache — Customer Support Domain</title>
+  <style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --surface2: #1c2230;
+    --border: #30363d;
+    --ink: #e6edf3;
+    --muted: #8b949e;
+    --green: #3fb950;
+    --blue: #58a6ff;
+    --purple: #bc8cff;
+    --yellow: #e3b341;
+    --red: #f85149;
+    --orange: #f0883e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: 'Inter', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.55;
+  }
+  header {
+    background: linear-gradient(135deg, #151b2b 0%, #0d1117 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 36px 48px 28px;
+  }
+  header h1 {
+    margin: 0 0 6px;
+    font-size: 30px;
+    font-weight: 700;
+    background: linear-gradient(90deg, var(--blue), var(--purple));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  header .subtitle { margin: 0; color: var(--muted); font-size: 14px; max-width: 800px; }
+  header .meta { margin: 10px 0 0; color: var(--muted); font-size: 12px; }
+  main { max-width: 1200px; margin: 0 auto; padding: 36px 48px 80px; }
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 14px;
+    margin-bottom: 40px;
+  }
+  .kpi {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px 16px 14px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.2s;
+  }
+  .kpi:hover { border-color: var(--blue); }
+  .kpi::before {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0; height: 3px;
+    background: linear-gradient(90deg, var(--blue), var(--purple));
+  }
+  .kpi-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 8px; }
+  .kpi-value { font-size: 26px; font-weight: 700; color: var(--green); }
+  .kpi-value.blue { color: var(--blue); }
+  .kpi-value.yellow { color: var(--yellow); }
+  .kpi-value.purple { color: var(--purple); }
+  .kpi-value.red { color: var(--red); }
+  .kpi-value.muted { color: var(--muted); }
+  section { margin-bottom: 44px; }
+  h2 {
+    font-size: 17px; font-weight: 600;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 8px; margin: 0 0 18px;
+    color: var(--blue);
+  }
+  h3 { font-size: 14px; color: var(--muted); margin: 0 0 10px; font-weight: 600; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    font-size: 13px;
+    margin-bottom: 16px;
+  }
+  th, td { padding: 10px 14px; border-bottom: 1px solid var(--border); text-align: left; }
+  th { background: rgba(88,166,255,0.06); color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(255,255,255,0.02); }
+  .verdict {
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin-bottom: 36px;
+    border: 1px solid;
+  }
+  .verdict.pass { background: rgba(63,185,80,0.07); border-color: rgba(63,185,80,0.3); }
+  .verdict.fail { background: rgba(248,81,73,0.07); border-color: rgba(248,81,73,0.3); }
+  .verdict strong { font-size: 15px; }
+  .verdict p { margin: 8px 0 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+  code {
+    background: rgba(255,255,255,0.06);
+    padding: 2px 6px; border-radius: 4px;
+    font-size: 12px; color: var(--blue); font-family: monospace;
+  }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 700px) { .two-col { grid-template-columns: 1fr; } main { padding: 20px; } header { padding: 24px; } }
+  .example-block {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-bottom: 10px;
+    font-size: 13px;
+  }
+  .example-block .label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+  .example-block .q { color: var(--ink); margin-bottom: 4px; }
+  .example-block .expected { color: var(--green); }
+  .example-block .wrong { color: var(--red); }
+  .bar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; font-size: 13px; }
+  .bar-label { width: 64px; color: var(--muted); flex-shrink: 0; font-size: 12px; }
+  .bar-track { flex: 1; height: 12px; background: rgba(255,255,255,0.04); border-radius: 6px; overflow: hidden; }
+  .bar-fill { height: 100%; background: linear-gradient(90deg, var(--blue), var(--purple)); border-radius: 6px; }
+  .bar-count { width: 36px; text-align: right; color: var(--muted); font-size: 12px; }
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .tag.pass { background: rgba(63,185,80,0.15); color: var(--green); }
+  .tag.fail { background: rgba(248,81,73,0.15); color: var(--red); }
+  .footnote { color: var(--muted); font-size: 12px; margin-top: 40px; border-top: 1px solid var(--border); padding-top: 16px; }
+  .splits-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px;
+  }
+  .splits-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px;
+  }
+  .splits-card .sc-label { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  .splits-card .sc-mean { font-size: 22px; font-weight: 700; color: var(--blue); }
+  .splits-card .sc-std { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .splits-card .sc-values { font-size: 11px; color: var(--muted); margin-top: 6px; font-family: monospace; }
+  .threshold-chart { position: relative; height: 160px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .threshold-chart svg { width: 100%; height: 100%; }
+  .domain-row td:first-child { font-weight: 600; color: var(--ink); }
+</style>
+</head>
+<body>
+  <header>
+    <h1>LatticeMemory Intent Cache — Customer Support Domain</h1>
+    <p class="subtitle">
+      Closed-set semantic cache proof: route prompts to approved answer intents
+      while tracking held-out recall, wrong-route rate, hit-rate simulation, and latency.
+    </p>
+    <p class="meta">
+      Model: <code>benchmarks\results\snap_product_gate_hard_symmetric_8ep\best_snap_encoder</code> &nbsp;|&nbsp;
+      Domain: <code>?</code> &nbsp;|&nbsp;
+      2026-06-08T02:37:41.390263Z
+    </p>
+  </header>
+  <main>
+    <div class="kpi-grid"><div class="kpi"><div class="kpi-label">Product Gate</div><div class="kpi-value green">PASS</div></div>
+<div class="kpi"><div class="kpi-label">Held-out Recall</div><div class="kpi-value green">88.9%</div></div>
+<div class="kpi"><div class="kpi-label">FP Rate</div><div class="kpi-value green">0.0%</div></div>
+<div class="kpi"><div class="kpi-label">Cache Sim Hit Rate</div><div class="kpi-value blue">83.3%</div></div>
+<div class="kpi"><div class="kpi-label">Mean Latency</div><div class="kpi-value purple">0.072 ms</div></div>
+<div class="kpi"><div class="kpi-label">Index Size</div><div class="kpi-value blue">48.0 KB</div></div>
+<div class="kpi"><div class="kpi-label">Intents</div><div class="kpi-value muted">12</div></div>
+<div class="kpi"><div class="kpi-label">Paraphrase n</div><div class="kpi-value muted">36</div></div></div>
+
+    <div class="verdict pass">
+      <strong>✓ PASS — intent_recall_at_zero_wrong_routes</strong>
+      <p>
+        With nearest-centroid routing, this benchmark measured
+        <strong>88.9%</strong> held-out paraphrase recall and
+        <strong>0.0%</strong> wrong-route rate on hard near-miss queries.
+        Cache simulation: <strong>83.3%</strong> hit rate.
+        Mean routing latency: <strong>0.072 ms</strong>.
+        Exact same-cell snapping is <code>research_exact_snap</code>
+        and is not required for this gate.
+      </p>
+    </div>
+
+    
+    
+    
+
+    <section>
+      <h2>Benchmark Context</h2>
+      <table>
+        <tr><th>Field</th><th>Value</th></tr>
+        <tr><td>Model</td><td>benchmarks\results\snap_product_gate_hard_symmetric_8ep\best_snap_encoder</td></tr>
+<tr><td>Embedding dimension</td><td>1024</td></tr>
+<tr><td>Domain</td><td>?</td></tr>
+<tr><td>Created at</td><td>2026-06-08T02:37:41.390263Z</td></tr>
+<tr><td>Product gate target</td><td>80.6%</td></tr>
+<tr><td>Exact snapping required</td><td>False</td></tr>
+<tr><td>Fragmentation metric role</td><td>research_exact_snap</td></tr>
+<tr><td>Cache sim total prompts</td><td>72</td></tr>
+<tr><td>Held-out paraphrases</td><td>36</td></tr>
+<tr><td>Held-out near-miss queries</td><td>60</td></tr>
+<tr><td>Stored centroid bytes</td><td>48.0 KB</td></tr>
+      </table>
+    </section>
+
+    <p class="footnote">
+      Generated from <code>latticememory_intent_cache_proof_results</code>
+      artifact version <code>1</code>.
+      Exact snapping is a research stretch goal; calibrated Hamming routing is the product gate.
+    </p>
+  </main>
+</body>
+</html>
