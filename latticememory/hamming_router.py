@@ -52,8 +52,12 @@ class HammingRouter:
         self._d_model = d_model
         self._lattice = E8LatticeDB(d_model=d_model)
         self.threshold = threshold
-        self._keys: list[np.ndarray] = []   # each is uint8 shape (n_blocks,)
+        # Keys stored as packed uint8 arrays: shape (n_blocks,) where each byte is one E8 block index.
+        # _packed_matrix is rebuilt lazily on lookup for cache efficiency.
+        self._keys: list[np.ndarray] = []
         self._values: list[Any] = []
+        self._key_set: set[bytes] = set()      # for O(1) dedup on add_from_key
+        self._packed_matrix: np.ndarray | None = None   # cached stack, invalidated on add
 
     @classmethod
     def from_model(cls, model_name_or_path: str, threshold: int = 111) -> "HammingRouter":
@@ -84,21 +88,33 @@ class HammingRouter:
         """Encode key_text to an E8 key, store it with value. Returns the raw key."""
         emb = self._encoder.encode([key_text], normalize_embeddings=True)[0]
         key_arr = self._emb_to_key_arr(emb)
-        self._keys.append(key_arr)
-        self._values.append(value)
-        return key_arr.tobytes()
+        raw = key_arr.tobytes()
+        if raw not in self._key_set:
+            self._key_set.add(raw)
+            self._keys.append(key_arr)
+            self._values.append(value)
+            self._packed_matrix = None  # invalidate cache
+        return raw
 
     def add_from_key(self, e8_key: bytes, value: Any) -> None:
-        """Store a pre-computed E8 key with value (avoids re-encoding)."""
-        self._keys.append(np.frombuffer(e8_key, dtype=np.uint8).copy())
-        self._values.append(value)
+        """Store a pre-computed E8 key with value. Silently deduplicates identical keys."""
+        if e8_key not in self._key_set:
+            self._key_set.add(e8_key)
+            self._keys.append(np.frombuffer(e8_key, dtype=np.uint8).copy())
+            self._values.append(value)
+            self._packed_matrix = None  # invalidate cache
 
     def clear(self) -> None:
         self._keys.clear()
         self._values.clear()
+        self._key_set.clear()
+        self._packed_matrix = None
 
     def __len__(self) -> int:
         return len(self._keys)
+
+    def __repr__(self) -> str:
+        return f"HammingRouter(n={len(self)}, threshold={self.threshold}, d_model={self._d_model})"
 
     # ------------------------------------------------------------------
     # Lookup
@@ -119,10 +135,46 @@ class HammingRouter:
         query_arr = np.frombuffer(e8_key, dtype=np.uint8)
         return self._nearest(query_arr, threshold)
 
+    def batch_lookup_keys(
+        self,
+        e8_keys: list[bytes],
+        threshold: int | None = None,
+    ) -> list[HammingMatch | None]:
+        """Batch lookup of pre-computed E8 keys. Returns one result per input key.
+
+        More efficient than calling lookup_key() in a loop because the stored key
+        matrix is built only once and all distance computations are vectorized.
+        """
+        if not self._keys:
+            return [None] * len(e8_keys)
+        thresh = threshold if threshold is not None else self.threshold
+        stored = self._get_packed_matrix()          # [N, n_blocks]
+        results: list[HammingMatch | None] = []
+        for raw_key in e8_keys:
+            q = np.frombuffer(raw_key, dtype=np.uint8)  # [n_blocks]
+            dists = np.sum(stored != q, axis=1)           # [N]
+            min_idx = int(np.argmin(dists))
+            min_dist = int(dists[min_idx])
+            if min_dist > thresh:
+                results.append(None)
+            else:
+                results.append(HammingMatch(
+                    value=self._values[min_idx],
+                    hamming_distance=min_dist,
+                    stored_key=self._keys[min_idx].tobytes(),
+                ))
+        return results
+
+    def _get_packed_matrix(self) -> np.ndarray:
+        """Return cached [N, n_blocks] uint8 matrix of stored keys (rebuilt on demand)."""
+        if self._packed_matrix is None or len(self._packed_matrix) != len(self._keys):
+            self._packed_matrix = np.stack(self._keys)  # [N, n_blocks]
+        return self._packed_matrix
+
     def _nearest(self, query_arr: np.ndarray, threshold: int | None) -> HammingMatch | None:
         thresh = threshold if threshold is not None else self.threshold
-        stored = np.stack(self._keys)               # [N, n_blocks]
-        dists = np.sum(stored != query_arr, axis=1) # [N] — block-level Hamming
+        stored = self._get_packed_matrix()              # [N, n_blocks]
+        dists = np.sum(stored != query_arr, axis=1)    # [N] — block-level Hamming
         min_idx = int(np.argmin(dists))
         min_dist = int(dists[min_idx])
         if min_dist > thresh:

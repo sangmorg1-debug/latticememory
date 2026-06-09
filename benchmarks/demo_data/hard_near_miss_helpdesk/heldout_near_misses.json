@@ -1,0 +1,124 @@
+{
+  "near_misses": [
+    [
+      "Renew my remote access",
+      "Get a new device provisioned"
+    ],
+    [
+      "Restore VPN login",
+      "My laptop needs replacing"
+    ],
+    [
+      "How do I request a new laptop?",
+      "Someone took my work computer"
+    ],
+    [
+      "Order a new computer for me",
+      "Lost my laptop, it may have been stolen"
+    ],
+    [
+      "I need a replacement laptop",
+      "Work device was taken"
+    ],
+    [
+      "Get access to licensed software",
+      "Offboard software license"
+    ],
+    [
+      "Request a tool license for my team",
+      "Cancel a seat for someone who left"
+    ],
+    [
+      "I need a software subscription",
+      "Deactivate tool access for departing team member"
+    ],
+    [
+      "How do I get access to a paid application?",
+      "How do I remove a license when someone leaves?"
+    ],
+    [
+      "How do I submit an expense report?",
+      "Get advance payment for business travel"
+    ],
+    [
+      "Expense claim process",
+      "How do I get prepaid for travel costs?"
+    ],
+    [
+      "How do I request time off?",
+      "How many vacation days do I have left?"
+    ],
+    [
+      "Book annual leave",
+      "Check my PTO balance"
+    ],
+    [
+      "How do I take a vacation day?",
+      "Remaining holiday allowance"
+    ],
+    [
+      "Request PTO",
+      "How much annual leave is left?"
+    ],
+    [
+      "Enroll in the company benefits plan",
+      "Switch benefit options outside open enrollment"
+    ],
+    [
+      "How do I get company health coverage?",
+      "Update benefits for a life event"
+    ],
+    [
+      "Benefits sign-up process",
+      "Can I change healthcare coverage now?"
+    ],
+    [
+      "How do I update my emergency contact?",
+      "Sign up for health insurance"
+    ],
+    [
+      "Change my next of kin details",
+      "Enroll in the company benefits plan"
+    ],
+    [
+      "How do I reset my VPN access?",
+      "Someone took my work computer"
+    ],
+    [
+      "I can't connect to the VPN",
+      "Lost my laptop, it may have been stolen"
+    ],
+    [
+      "VPN credentials stopped working",
+      "Work device was taken"
+    ],
+    [
+      "Renew my remote access",
+      "My laptop is missing and I think it was stolen"
+    ],
+    [
+      "Restore VPN login",
+      "Stolen company laptop procedure"
+    ],
+    [
+      "Submit receipts for reimbursement",
+      "Apply for time off"
+    ],
+    [
+      "Expense claim process",
+      "Schedule holiday leave"
+    ],
+    [
+      "How do I request a software license?",
+      "Order a new computer for me"
+    ],
+    [
+      "Get access to licensed software",
+      "I need a replacement laptop"
+    ],
+    [
+      "Request a tool license for my team",
+      "Request a work laptop"
+    ]
+  ]
+}

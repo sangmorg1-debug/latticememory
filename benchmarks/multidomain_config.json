@@ -1,0 +1,18 @@
+[
+  {
+    "name": "customer_support",
+    "source": "benchmarks/demo_data/hard_near_miss_challenge/hard_near_miss_source.json",
+    "calibration": "benchmarks/demo_data/hard_near_miss_challenge/calibration_data.json",
+    "paraphrases": "benchmarks/demo_data/hard_near_miss_challenge/heldout_paraphrases.json",
+    "near_misses": "benchmarks/demo_data/hard_near_miss_challenge/heldout_near_misses.json",
+    "prompts_responses": "benchmarks/demo_data/hard_near_miss_challenge/prompts_responses.json"
+  },
+  {
+    "name": "it_hr_helpdesk",
+    "source": "benchmarks/demo_data/hard_near_miss_helpdesk/hard_near_miss_source.json",
+    "calibration": "benchmarks/demo_data/hard_near_miss_helpdesk/calibration_data.json",
+    "paraphrases": "benchmarks/demo_data/hard_near_miss_helpdesk/heldout_paraphrases.json",
+    "near_misses": "benchmarks/demo_data/hard_near_miss_helpdesk/heldout_near_misses.json",
+    "prompts_responses": "benchmarks/demo_data/hard_near_miss_helpdesk/prompts_responses.json"
+  }
+]

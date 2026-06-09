@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import datetime
+import hashlib
 import json
 import os
 import sys
@@ -22,6 +23,27 @@ from latticememory.hamming_router import (
     validate_calibration_data_schema,
     compute_calibration_data_sha256,
 )
+
+
+class _SyntheticEncoder:
+    """Deterministic MD5-hash encoder for fast CI runs (no model download needed)."""
+
+    def __init__(self, d_model: int = 384):
+        self.d_model = d_model
+
+    def get_embedding_dimension(self) -> int:
+        return self.d_model
+
+    def encode(self, sentences, normalize_embeddings: bool = True, **kwargs):
+        vecs = []
+        for s in sentences:
+            seed = int(hashlib.md5(str(s).encode()).hexdigest(), 16) % (2**31)
+            rng = np.random.default_rng(seed)
+            v = rng.standard_normal(self.d_model).astype(np.float32)
+            if normalize_embeddings:
+                v /= np.linalg.norm(v) + 1e-9
+            vecs.append(v)
+        return np.stack(vecs)
 
 
 def _coerce_pairs(raw_pairs, *, path: str) -> list[tuple[str, str]]:
@@ -215,6 +237,11 @@ def main() -> None:
         default=0.8056,
         help="Required held-out recall at the FP budget for product-gate pass (default: 0.8056)",
     )
+    p.add_argument(
+        "--synthetic",
+        action="store_true",
+        help="Use synthetic MD5-hash encoder instead of loading a real model (fast CI mode)",
+    )
     args = p.parse_args()
 
     # Load calibration data
@@ -248,11 +275,17 @@ def main() -> None:
         held_out_near_misses = cal_near_misses
 
     print(f"Loading encoder model: {args.model} ...")
-    try:
-        router = HammingRouter.from_model(args.model)
-    except Exception as exc:
-        print(f"Error loading model: {exc}", file=sys.stderr)
-        sys.exit(1)
+    use_synthetic = args.synthetic or args.model.lower() == "synthetic"
+    if use_synthetic:
+        print("  [synthetic mode] Using deterministic MD5-hash encoder (no model download)")
+        enc = _SyntheticEncoder(d_model=384)
+        router = HammingRouter(encoder=enc, d_model=enc.d_model)
+    else:
+        try:
+            router = HammingRouter.from_model(args.model)
+        except Exception as exc:
+            print(f"Error loading model: {exc}", file=sys.stderr)
+            sys.exit(1)
 
     print("Running threshold calibration...")
     cal_results = router.calibrate_threshold(

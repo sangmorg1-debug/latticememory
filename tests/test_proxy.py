@@ -690,4 +690,63 @@ def test_proxy_mode_override_conflict():
         )
 
 
+# ---------------------------------------------------------------------------
+# proxy_server.py ASGI entrypoint tests
+# ---------------------------------------------------------------------------
 
+def test_proxy_server_imports_without_error_when_no_api_key(monkeypatch):
+    """proxy_server.py must not raise at import time even with no API key set."""
+    import sys
+    import warnings
+
+    for mod_name in list(sys.modules.keys()):
+        if "latticememory.proxy_server" in mod_name:
+            del sys.modules[mod_name]
+
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("LATTICE_API_KEY", raising=False)
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        import latticememory.proxy_server  # noqa: F401
+
+    warning_msgs = [str(w.message) for w in caught if issubclass(w.category, RuntimeWarning)]
+    assert any("OPENAI_API_KEY" in msg for msg in warning_msgs), (
+        f"Expected RuntimeWarning about missing key, got: {[str(w.message) for w in caught]}"
+    )
+
+
+def test_proxy_server_emits_runtime_warning_not_error_on_missing_key(monkeypatch):
+    """Importing proxy_server without API key should emit RuntimeWarning, not raise."""
+    import sys
+    import pytest
+
+    for mod_name in list(sys.modules.keys()):
+        if "latticememory.proxy_server" in mod_name:
+            del sys.modules[mod_name]
+
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("LATTICE_API_KEY", raising=False)
+
+    with pytest.warns(RuntimeWarning, match="OPENAI_API_KEY"):
+        import latticememory.proxy_server  # noqa: F401
+
+
+def test_proxy_server_health_endpoint_responds(monkeypatch):
+    """The ASGI app in proxy_server responds to /health with status=healthy."""
+    import sys
+
+    for mod_name in list(sys.modules.keys()):
+        if "latticememory.proxy_server" in mod_name:
+            del sys.modules[mod_name]
+
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key-for-health-check")
+
+    import latticememory.proxy_server as ps
+    client = TestClient(ps.app)
+
+    response = client.get("/health")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "healthy"
+    assert data["service"] == "latticememory-proxy"

@@ -1,0 +1,362 @@
+[
+  {
+    "intent_id": "reset_vpn_access",
+    "prompt": "How do I reset my VPN access?",
+    "response": "Submit a VPN reset request via the IT portal. Access is restored within one business day after identity verification."
+  },
+  {
+    "intent_id": "reset_vpn_access",
+    "prompt": "I can't connect to the VPN",
+    "response": "Submit a VPN reset request via the IT portal. Access is restored within one business day after identity verification."
+  },
+  {
+    "intent_id": "reset_vpn_access",
+    "prompt": "VPN credentials stopped working",
+    "response": "Submit a VPN reset request via the IT portal. Access is restored within one business day after identity verification."
+  },
+  {
+    "intent_id": "reset_vpn_access",
+    "prompt": "Renew my remote access",
+    "response": "Submit a VPN reset request via the IT portal. Access is restored within one business day after identity verification."
+  },
+  {
+    "intent_id": "reset_vpn_access",
+    "prompt": "Restore VPN login",
+    "response": "Submit a VPN reset request via the IT portal. Access is restored within one business day after identity verification."
+  },
+  {
+    "intent_id": "reset_vpn_access",
+    "prompt": "Fix my VPN connection issue",
+    "response": "Submit a VPN reset request via the IT portal. Access is restored within one business day after identity verification."
+  },
+  {
+    "intent_id": "request_new_laptop",
+    "prompt": "How do I request a new laptop?",
+    "response": "Submit a hardware request in the IT portal. Approval from your manager is required before provisioning."
+  },
+  {
+    "intent_id": "request_new_laptop",
+    "prompt": "Order a new computer for me",
+    "response": "Submit a hardware request in the IT portal. Approval from your manager is required before provisioning."
+  },
+  {
+    "intent_id": "request_new_laptop",
+    "prompt": "I need a replacement laptop",
+    "response": "Submit a hardware request in the IT portal. Approval from your manager is required before provisioning."
+  },
+  {
+    "intent_id": "request_new_laptop",
+    "prompt": "Request a work laptop",
+    "response": "Submit a hardware request in the IT portal. Approval from your manager is required before provisioning."
+  },
+  {
+    "intent_id": "request_new_laptop",
+    "prompt": "Get a new device provisioned",
+    "response": "Submit a hardware request in the IT portal. Approval from your manager is required before provisioning."
+  },
+  {
+    "intent_id": "request_new_laptop",
+    "prompt": "My laptop needs replacing",
+    "response": "Submit a hardware request in the IT portal. Approval from your manager is required before provisioning."
+  },
+  {
+    "intent_id": "report_laptop_stolen",
+    "prompt": "My laptop was stolen, what do I do?",
+    "response": "Report the theft to IT Security immediately via the security hotline. We will remotely wipe the device and issue a replacement."
+  },
+  {
+    "intent_id": "report_laptop_stolen",
+    "prompt": "Someone took my work computer",
+    "response": "Report the theft to IT Security immediately via the security hotline. We will remotely wipe the device and issue a replacement."
+  },
+  {
+    "intent_id": "report_laptop_stolen",
+    "prompt": "Lost my laptop, it may have been stolen",
+    "response": "Report the theft to IT Security immediately via the security hotline. We will remotely wipe the device and issue a replacement."
+  },
+  {
+    "intent_id": "report_laptop_stolen",
+    "prompt": "Work device was taken",
+    "response": "Report the theft to IT Security immediately via the security hotline. We will remotely wipe the device and issue a replacement."
+  },
+  {
+    "intent_id": "report_laptop_stolen",
+    "prompt": "My laptop is missing and I think it was stolen",
+    "response": "Report the theft to IT Security immediately via the security hotline. We will remotely wipe the device and issue a replacement."
+  },
+  {
+    "intent_id": "report_laptop_stolen",
+    "prompt": "Stolen company laptop procedure",
+    "response": "Report the theft to IT Security immediately via the security hotline. We will remotely wipe the device and issue a replacement."
+  },
+  {
+    "intent_id": "request_software_license",
+    "prompt": "How do I request a software license?",
+    "response": "Software license requests are submitted via the IT portal and require business justification and manager approval."
+  },
+  {
+    "intent_id": "request_software_license",
+    "prompt": "Get access to licensed software",
+    "response": "Software license requests are submitted via the IT portal and require business justification and manager approval."
+  },
+  {
+    "intent_id": "request_software_license",
+    "prompt": "Request a tool license for my team",
+    "response": "Software license requests are submitted via the IT portal and require business justification and manager approval."
+  },
+  {
+    "intent_id": "request_software_license",
+    "prompt": "I need a software subscription",
+    "response": "Software license requests are submitted via the IT portal and require business justification and manager approval."
+  },
+  {
+    "intent_id": "request_software_license",
+    "prompt": "How do I get access to a paid application?",
+    "response": "Software license requests are submitted via the IT portal and require business justification and manager approval."
+  },
+  {
+    "intent_id": "request_software_license",
+    "prompt": "Software access request procedure",
+    "response": "Software license requests are submitted via the IT portal and require business justification and manager approval."
+  },
+  {
+    "intent_id": "revoke_software_license",
+    "prompt": "How do I revoke a software license for a departing employee?",
+    "response": "Submit a license revocation request when offboarding an employee. IT will deactivate the seat within 24 hours."
+  },
+  {
+    "intent_id": "revoke_software_license",
+    "prompt": "Remove software access from a leaving employee",
+    "response": "Submit a license revocation request when offboarding an employee. IT will deactivate the seat within 24 hours."
+  },
+  {
+    "intent_id": "revoke_software_license",
+    "prompt": "Offboard software license",
+    "response": "Submit a license revocation request when offboarding an employee. IT will deactivate the seat within 24 hours."
+  },
+  {
+    "intent_id": "revoke_software_license",
+    "prompt": "Cancel a seat for someone who left",
+    "response": "Submit a license revocation request when offboarding an employee. IT will deactivate the seat within 24 hours."
+  },
+  {
+    "intent_id": "revoke_software_license",
+    "prompt": "Deactivate tool access for departing team member",
+    "response": "Submit a license revocation request when offboarding an employee. IT will deactivate the seat within 24 hours."
+  },
+  {
+    "intent_id": "revoke_software_license",
+    "prompt": "How do I remove a license when someone leaves?",
+    "response": "Submit a license revocation request when offboarding an employee. IT will deactivate the seat within 24 hours."
+  },
+  {
+    "intent_id": "submit_expense_report",
+    "prompt": "How do I submit an expense report?",
+    "response": "Expense reports are submitted in the HR portal under Finance > Expenses. Attach receipts and get manager sign-off within 30 days."
+  },
+  {
+    "intent_id": "submit_expense_report",
+    "prompt": "How do I get reimbursed for a work expense?",
+    "response": "Expense reports are submitted in the HR portal under Finance > Expenses. Attach receipts and get manager sign-off within 30 days."
+  },
+  {
+    "intent_id": "submit_expense_report",
+    "prompt": "File my expenses from the business trip",
+    "response": "Expense reports are submitted in the HR portal under Finance > Expenses. Attach receipts and get manager sign-off within 30 days."
+  },
+  {
+    "intent_id": "submit_expense_report",
+    "prompt": "Submit receipts for reimbursement",
+    "response": "Expense reports are submitted in the HR portal under Finance > Expenses. Attach receipts and get manager sign-off within 30 days."
+  },
+  {
+    "intent_id": "submit_expense_report",
+    "prompt": "Expense claim process",
+    "response": "Expense reports are submitted in the HR portal under Finance > Expenses. Attach receipts and get manager sign-off within 30 days."
+  },
+  {
+    "intent_id": "submit_expense_report",
+    "prompt": "I have business expenses to report",
+    "response": "Expense reports are submitted in the HR portal under Finance > Expenses. Attach receipts and get manager sign-off within 30 days."
+  },
+  {
+    "intent_id": "request_expense_advance",
+    "prompt": "How do I request a travel expense advance?",
+    "response": "Expense advances for travel must be requested at least 5 business days before the trip via the HR Finance portal."
+  },
+  {
+    "intent_id": "request_expense_advance",
+    "prompt": "Get advance payment for business travel",
+    "response": "Expense advances for travel must be requested at least 5 business days before the trip via the HR Finance portal."
+  },
+  {
+    "intent_id": "request_expense_advance",
+    "prompt": "Can I get money upfront for a work trip?",
+    "response": "Expense advances for travel must be requested at least 5 business days before the trip via the HR Finance portal."
+  },
+  {
+    "intent_id": "request_expense_advance",
+    "prompt": "Pre-trip expense advance request",
+    "response": "Expense advances for travel must be requested at least 5 business days before the trip via the HR Finance portal."
+  },
+  {
+    "intent_id": "request_expense_advance",
+    "prompt": "Travel advance before the trip",
+    "response": "Expense advances for travel must be requested at least 5 business days before the trip via the HR Finance portal."
+  },
+  {
+    "intent_id": "request_expense_advance",
+    "prompt": "How do I get prepaid for travel costs?",
+    "response": "Expense advances for travel must be requested at least 5 business days before the trip via the HR Finance portal."
+  },
+  {
+    "intent_id": "request_leave",
+    "prompt": "How do I request time off?",
+    "response": "Submit a leave request in the HR portal under Time & Attendance. Requests require at least 2 weeks notice for planned leave."
+  },
+  {
+    "intent_id": "request_leave",
+    "prompt": "Book annual leave",
+    "response": "Submit a leave request in the HR portal under Time & Attendance. Requests require at least 2 weeks notice for planned leave."
+  },
+  {
+    "intent_id": "request_leave",
+    "prompt": "How do I take a vacation day?",
+    "response": "Submit a leave request in the HR portal under Time & Attendance. Requests require at least 2 weeks notice for planned leave."
+  },
+  {
+    "intent_id": "request_leave",
+    "prompt": "Request PTO",
+    "response": "Submit a leave request in the HR portal under Time & Attendance. Requests require at least 2 weeks notice for planned leave."
+  },
+  {
+    "intent_id": "request_leave",
+    "prompt": "Apply for time off",
+    "response": "Submit a leave request in the HR portal under Time & Attendance. Requests require at least 2 weeks notice for planned leave."
+  },
+  {
+    "intent_id": "request_leave",
+    "prompt": "Schedule holiday leave",
+    "response": "Submit a leave request in the HR portal under Time & Attendance. Requests require at least 2 weeks notice for planned leave."
+  },
+  {
+    "intent_id": "check_leave_balance",
+    "prompt": "How do I check my remaining leave balance?",
+    "response": "Leave balances are visible in the HR portal under My Profile > Time Off."
+  },
+  {
+    "intent_id": "check_leave_balance",
+    "prompt": "How many vacation days do I have left?",
+    "response": "Leave balances are visible in the HR portal under My Profile > Time Off."
+  },
+  {
+    "intent_id": "check_leave_balance",
+    "prompt": "Check my PTO balance",
+    "response": "Leave balances are visible in the HR portal under My Profile > Time Off."
+  },
+  {
+    "intent_id": "check_leave_balance",
+    "prompt": "Remaining holiday allowance",
+    "response": "Leave balances are visible in the HR portal under My Profile > Time Off."
+  },
+  {
+    "intent_id": "check_leave_balance",
+    "prompt": "How much annual leave is left?",
+    "response": "Leave balances are visible in the HR portal under My Profile > Time Off."
+  },
+  {
+    "intent_id": "check_leave_balance",
+    "prompt": "View my time off balance",
+    "response": "Leave balances are visible in the HR portal under My Profile > Time Off."
+  },
+  {
+    "intent_id": "update_emergency_contact",
+    "prompt": "How do I update my emergency contact?",
+    "response": "Emergency contact information can be updated in HR portal under My Profile > Personal Information."
+  },
+  {
+    "intent_id": "update_emergency_contact",
+    "prompt": "Change my next of kin details",
+    "response": "Emergency contact information can be updated in HR portal under My Profile > Personal Information."
+  },
+  {
+    "intent_id": "update_emergency_contact",
+    "prompt": "Update who to call in an emergency",
+    "response": "Emergency contact information can be updated in HR portal under My Profile > Personal Information."
+  },
+  {
+    "intent_id": "update_emergency_contact",
+    "prompt": "Edit emergency contact info in HR",
+    "response": "Emergency contact information can be updated in HR portal under My Profile > Personal Information."
+  },
+  {
+    "intent_id": "update_emergency_contact",
+    "prompt": "Add a new emergency contact",
+    "response": "Emergency contact information can be updated in HR portal under My Profile > Personal Information."
+  },
+  {
+    "intent_id": "update_emergency_contact",
+    "prompt": "Replace my emergency contact person",
+    "response": "Emergency contact information can be updated in HR portal under My Profile > Personal Information."
+  },
+  {
+    "intent_id": "enroll_benefits",
+    "prompt": "How do I enroll in employee benefits?",
+    "response": "Benefits enrollment is available during the open enrollment window in the HR portal under Benefits. Contact HR for late enrollment exceptions."
+  },
+  {
+    "intent_id": "enroll_benefits",
+    "prompt": "Sign up for health insurance",
+    "response": "Benefits enrollment is available during the open enrollment window in the HR portal under Benefits. Contact HR for late enrollment exceptions."
+  },
+  {
+    "intent_id": "enroll_benefits",
+    "prompt": "Enroll in the company benefits plan",
+    "response": "Benefits enrollment is available during the open enrollment window in the HR portal under Benefits. Contact HR for late enrollment exceptions."
+  },
+  {
+    "intent_id": "enroll_benefits",
+    "prompt": "How do I get company health coverage?",
+    "response": "Benefits enrollment is available during the open enrollment window in the HR portal under Benefits. Contact HR for late enrollment exceptions."
+  },
+  {
+    "intent_id": "enroll_benefits",
+    "prompt": "Benefits sign-up process",
+    "response": "Benefits enrollment is available during the open enrollment window in the HR portal under Benefits. Contact HR for late enrollment exceptions."
+  },
+  {
+    "intent_id": "enroll_benefits",
+    "prompt": "Add dental coverage to my benefits",
+    "response": "Benefits enrollment is available during the open enrollment window in the HR portal under Benefits. Contact HR for late enrollment exceptions."
+  },
+  {
+    "intent_id": "change_benefits",
+    "prompt": "How do I change my benefits selections?",
+    "response": "Benefits changes outside open enrollment require a qualifying life event such as marriage, birth, or loss of other coverage."
+  },
+  {
+    "intent_id": "change_benefits",
+    "prompt": "Modify my health plan mid-year",
+    "response": "Benefits changes outside open enrollment require a qualifying life event such as marriage, birth, or loss of other coverage."
+  },
+  {
+    "intent_id": "change_benefits",
+    "prompt": "Change my insurance plan",
+    "response": "Benefits changes outside open enrollment require a qualifying life event such as marriage, birth, or loss of other coverage."
+  },
+  {
+    "intent_id": "change_benefits",
+    "prompt": "Switch benefit options outside open enrollment",
+    "response": "Benefits changes outside open enrollment require a qualifying life event such as marriage, birth, or loss of other coverage."
+  },
+  {
+    "intent_id": "change_benefits",
+    "prompt": "Update benefits for a life event",
+    "response": "Benefits changes outside open enrollment require a qualifying life event such as marriage, birth, or loss of other coverage."
+  },
+  {
+    "intent_id": "change_benefits",
+    "prompt": "Can I change healthcare coverage now?",
+    "response": "Benefits changes outside open enrollment require a qualifying life event such as marriage, birth, or loss of other coverage."
+  }
+]

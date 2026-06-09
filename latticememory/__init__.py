@@ -59,6 +59,7 @@ __all__ = [
     "AgentMemorySync",
     "make_autogen_sync_tools",
     "LangGraphLatticeAdapter",
+    "LatticeStreamDedup",
     "E8RoutingLoss",
     "E8RoutingLossOutput",
     "LatticeDataPipeline",

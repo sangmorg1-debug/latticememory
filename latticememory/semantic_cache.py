@@ -70,7 +70,6 @@ class RFSnapSemanticCache:
         self._hamming_router = hamming_router
         self._hamming_threshold = hamming_threshold
         self.hamming_router_mode = hamming_router_mode
-        self._router_cache_ids: set[str] = set()
         self._entries: dict[str, SemanticCacheEntry] = {}
 
         # Restore existing cache entries from runtime memory on startup
@@ -98,7 +97,6 @@ class RFSnapSemanticCache:
                     self._entries[doc_id] = entry
                     if self._hamming_router is not None and lattice_key:
                         self._hamming_router.add_from_key(lattice_key, doc_id)
-                        self._router_cache_ids.add(doc_id)
 
     @property
     def size(self) -> int:
@@ -123,9 +121,9 @@ class RFSnapSemanticCache:
         self.runtime.memory.add_documents([
             self._entry_to_document(entry, embedding)
         ])
-        if self._hamming_router is not None and cache_id not in self._router_cache_ids:
+        if self._hamming_router is not None:
+            # add_from_key deduplicates internally — no separate tracking needed
             self._hamming_router.add_from_key(lattice_key, cache_id)
-            self._router_cache_ids.add(cache_id)
         return entry
 
     def get(
@@ -264,11 +262,13 @@ class RFSnapSemanticCache:
         if self._hamming_router is not None:
             base["hamming_router"] = {
                 "enabled": True,
+                "mode": self.hamming_router_mode,
                 "threshold": self._hamming_threshold,
                 "entries": len(self._hamming_router),
+                "is_reliable": len(self._hamming_router) >= 100,
             }
         else:
-            base["hamming_router"] = {"enabled": False}
+            base["hamming_router"] = {"enabled": False, "mode": self.hamming_router_mode}
         return base
 
     def _entry_to_document(self, entry: SemanticCacheEntry, embedding):

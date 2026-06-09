@@ -211,9 +211,66 @@ class LangGraphLatticeAdapter:
         """Initialize the LangGraph adapter.
 
         Args:
-            sync: The local AgentMemorySync instance.
+            sync: The AgentMemorySync instance to manage.
         """
         self.sync = sync
+
+    def add_to_state(self, state: dict[str, Any]) -> None:
+        """Add the sync layer to the LangGraph state dict.
+
+        Args:
+            state: The LangGraph workflow state.
+        """
+        if "agent_memory_sync" not in state:
+            state["agent_memory_sync"] = self.sync
+
+    def get_missing_keys(self, state: dict[str, Any], peer_sync: AgentMemorySync) -> dict[str, set[bytes]]:
+        """Compare this agent's keys with a peer's to find missing/extra keys.
+
+        Args:
+            state: The LangGraph workflow state.
+            peer_sync: The peer AgentMemorySync to compare with.
+
+        Returns:
+            A dict with 'missing' and 'extra' key sets.
+        """
+        peer_keys = peer_sync.get_known_keys()
+        return self.sync.diff(peer_keys)
+
+    def sync_missing_docs(self, state: dict[str, Any], peer_sync: AgentMemorySync) -> dict[str, Any]:
+        """Synchronize missing documents from a peer and update state.
+
+        Args:
+            state: The LangGraph workflow state.
+            peer_sync: The peer to sync from.
+
+        Returns:
+            Updated state with synced_count added.
+        """
+        diffs = self.get_missing_keys(state, peer_sync)
+        synced_count = 0
+        for key in diffs["missing"]:
+            docs = peer_sync.get_documents_for_key(key)
+            for doc in docs:
+                self.sync.receive_document(doc)
+                synced_count += 1
+
+        state["synced_doc_count"] = synced_count
+        return state
+
+    def create_node_sync(self) -> Any:
+        """Create a LangGraph node function for memory sync.
+
+        Returns:
+            A callable node function suitable for langgraph.graph.StateGraph.add_node().
+        """
+        def node_fn(state: dict[str, Any]) -> dict[str, Any]:
+            # This node can be used in a workflow to trigger sync with peers
+            # Typically called between agent actions
+            self.add_to_state(state)
+            state["sync_node_executed"] = True
+            return state
+        return node_fn
 
     def sync_node(self, state: dict[str, Any]) -> dict[str, Any]:
         """A LangGraph node function that processes keys/texts to sync memory state.
@@ -234,7 +291,7 @@ class LangGraphLatticeAdapter:
                 key_bytes = bytes.fromhex(key_hex)
             except ValueError:
                 continue
-            
+
             docs = self.sync.request(key_bytes)
             for doc in docs:
                 if doc.doc_id not in self.sync.runtime.memory._doc_id_set:

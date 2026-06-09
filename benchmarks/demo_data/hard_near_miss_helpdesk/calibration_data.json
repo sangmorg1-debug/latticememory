@@ -1,0 +1,328 @@
+{
+  "domain": "hard_helpdesk_near_misses",
+  "source": "built_in_hard_near_miss_helpdesk",
+  "paraphrases": [
+    [
+      "How do I reset my VPN access?",
+      "I can't connect to the VPN"
+    ],
+    [
+      "How do I reset my VPN access?",
+      "VPN credentials stopped working"
+    ],
+    [
+      "How do I reset my VPN access?",
+      "Renew my remote access"
+    ],
+    [
+      "How do I reset my VPN access?",
+      "Restore VPN login"
+    ],
+    [
+      "How do I reset my VPN access?",
+      "Fix my VPN connection issue"
+    ],
+    [
+      "How do I request a new laptop?",
+      "Order a new computer for me"
+    ],
+    [
+      "How do I request a new laptop?",
+      "I need a replacement laptop"
+    ],
+    [
+      "How do I request a new laptop?",
+      "Request a work laptop"
+    ],
+    [
+      "How do I request a new laptop?",
+      "Get a new device provisioned"
+    ],
+    [
+      "How do I request a new laptop?",
+      "My laptop needs replacing"
+    ],
+    [
+      "My laptop was stolen, what do I do?",
+      "Someone took my work computer"
+    ],
+    [
+      "My laptop was stolen, what do I do?",
+      "Lost my laptop, it may have been stolen"
+    ],
+    [
+      "My laptop was stolen, what do I do?",
+      "Work device was taken"
+    ],
+    [
+      "My laptop was stolen, what do I do?",
+      "My laptop is missing and I think it was stolen"
+    ],
+    [
+      "My laptop was stolen, what do I do?",
+      "Stolen company laptop procedure"
+    ],
+    [
+      "How do I request a software license?",
+      "Get access to licensed software"
+    ],
+    [
+      "How do I request a software license?",
+      "Request a tool license for my team"
+    ],
+    [
+      "How do I request a software license?",
+      "I need a software subscription"
+    ],
+    [
+      "How do I request a software license?",
+      "How do I get access to a paid application?"
+    ],
+    [
+      "How do I request a software license?",
+      "Software access request procedure"
+    ],
+    [
+      "How do I revoke a software license for a departing employee?",
+      "Remove software access from a leaving employee"
+    ],
+    [
+      "How do I revoke a software license for a departing employee?",
+      "Offboard software license"
+    ],
+    [
+      "How do I revoke a software license for a departing employee?",
+      "Cancel a seat for someone who left"
+    ],
+    [
+      "How do I revoke a software license for a departing employee?",
+      "Deactivate tool access for departing team member"
+    ],
+    [
+      "How do I revoke a software license for a departing employee?",
+      "How do I remove a license when someone leaves?"
+    ],
+    [
+      "How do I submit an expense report?",
+      "How do I get reimbursed for a work expense?"
+    ],
+    [
+      "How do I submit an expense report?",
+      "File my expenses from the business trip"
+    ],
+    [
+      "How do I submit an expense report?",
+      "Submit receipts for reimbursement"
+    ],
+    [
+      "How do I submit an expense report?",
+      "Expense claim process"
+    ],
+    [
+      "How do I submit an expense report?",
+      "I have business expenses to report"
+    ],
+    [
+      "How do I request a travel expense advance?",
+      "Get advance payment for business travel"
+    ],
+    [
+      "How do I request a travel expense advance?",
+      "Can I get money upfront for a work trip?"
+    ],
+    [
+      "How do I request a travel expense advance?",
+      "Pre-trip expense advance request"
+    ],
+    [
+      "How do I request a travel expense advance?",
+      "Travel advance before the trip"
+    ],
+    [
+      "How do I request a travel expense advance?",
+      "How do I get prepaid for travel costs?"
+    ],
+    [
+      "How do I request time off?",
+      "Book annual leave"
+    ],
+    [
+      "How do I request time off?",
+      "How do I take a vacation day?"
+    ],
+    [
+      "How do I request time off?",
+      "Request PTO"
+    ],
+    [
+      "How do I request time off?",
+      "Apply for time off"
+    ],
+    [
+      "How do I request time off?",
+      "Schedule holiday leave"
+    ],
+    [
+      "How do I check my remaining leave balance?",
+      "How many vacation days do I have left?"
+    ],
+    [
+      "How do I check my remaining leave balance?",
+      "Check my PTO balance"
+    ],
+    [
+      "How do I check my remaining leave balance?",
+      "Remaining holiday allowance"
+    ],
+    [
+      "How do I check my remaining leave balance?",
+      "How much annual leave is left?"
+    ],
+    [
+      "How do I check my remaining leave balance?",
+      "View my time off balance"
+    ],
+    [
+      "How do I update my emergency contact?",
+      "Change my next of kin details"
+    ],
+    [
+      "How do I update my emergency contact?",
+      "Update who to call in an emergency"
+    ],
+    [
+      "How do I update my emergency contact?",
+      "Edit emergency contact info in HR"
+    ],
+    [
+      "How do I update my emergency contact?",
+      "Add a new emergency contact"
+    ],
+    [
+      "How do I update my emergency contact?",
+      "Replace my emergency contact person"
+    ],
+    [
+      "How do I enroll in employee benefits?",
+      "Sign up for health insurance"
+    ],
+    [
+      "How do I enroll in employee benefits?",
+      "Enroll in the company benefits plan"
+    ],
+    [
+      "How do I enroll in employee benefits?",
+      "How do I get company health coverage?"
+    ],
+    [
+      "How do I enroll in employee benefits?",
+      "Benefits sign-up process"
+    ],
+    [
+      "How do I enroll in employee benefits?",
+      "Add dental coverage to my benefits"
+    ],
+    [
+      "How do I change my benefits selections?",
+      "Modify my health plan mid-year"
+    ],
+    [
+      "How do I change my benefits selections?",
+      "Change my insurance plan"
+    ],
+    [
+      "How do I change my benefits selections?",
+      "Switch benefit options outside open enrollment"
+    ],
+    [
+      "How do I change my benefits selections?",
+      "Update benefits for a life event"
+    ],
+    [
+      "How do I change my benefits selections?",
+      "Can I change healthcare coverage now?"
+    ]
+  ],
+  "near_misses": [
+    [
+      "How do I reset my VPN access?",
+      "Order a new computer for me"
+    ],
+    [
+      "I can't connect to the VPN",
+      "I need a replacement laptop"
+    ],
+    [
+      "VPN credentials stopped working",
+      "Request a work laptop"
+    ],
+    [
+      "Request a work laptop",
+      "My laptop is missing and I think it was stolen"
+    ],
+    [
+      "Get a new device provisioned",
+      "Stolen company laptop procedure"
+    ],
+    [
+      "How do I request a software license?",
+      "Remove software access from a leaving employee"
+    ],
+    [
+      "How do I get reimbursed for a work expense?",
+      "Can I get money upfront for a work trip?"
+    ],
+    [
+      "File my expenses from the business trip",
+      "Pre-trip expense advance request"
+    ],
+    [
+      "Submit receipts for reimbursement",
+      "Travel advance before the trip"
+    ],
+    [
+      "Apply for time off",
+      "View my time off balance"
+    ],
+    [
+      "How do I enroll in employee benefits?",
+      "Modify my health plan mid-year"
+    ],
+    [
+      "Sign up for health insurance",
+      "Change my insurance plan"
+    ],
+    [
+      "Update who to call in an emergency",
+      "How do I get company health coverage?"
+    ],
+    [
+      "Edit emergency contact info in HR",
+      "Benefits sign-up process"
+    ],
+    [
+      "Add a new emergency contact",
+      "Add dental coverage to my benefits"
+    ],
+    [
+      "How do I submit an expense report?",
+      "Book annual leave"
+    ],
+    [
+      "How do I get reimbursed for a work expense?",
+      "How do I take a vacation day?"
+    ],
+    [
+      "File my expenses from the business trip",
+      "Request PTO"
+    ],
+    [
+      "I need a software subscription",
+      "Get a new device provisioned"
+    ],
+    [
+      "How do I get access to a paid application?",
+      "My laptop needs replacing"
+    ]
+  ]
+}
