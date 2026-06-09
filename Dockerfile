@@ -19,6 +19,7 @@
 #   LATTICE_VALIDATION_REQUIRED  true | false (Default: false)
 #   LATTICE_AUDIT_LOG_PATH  Path for audit log JSONL file (optional)
 #   LATTICE_DIVERGENCE_THRESHOLD  Float (optional, enables divergence check)
+#   LATTICE_MISS_LOG_PATH   Path for JSONL miss log (enables active learning flywheel)
 
 FROM python:3.11-slim
 

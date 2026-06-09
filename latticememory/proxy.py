@@ -56,6 +56,8 @@ class LatticeLLMProxy:
         validation_required: bool = False,
         audit_log_path: str | None = None,
         divergence_threshold: float | None = None,
+        # Active learning flywheel
+        miss_log_path: str | None = None,
     ):
         self.upstream_url = upstream_url
         self.upstream_api_key = upstream_api_key
@@ -71,6 +73,12 @@ class LatticeLLMProxy:
         self.divergence_threshold = divergence_threshold
         self.audit_events: list[dict[str, Any]] = []
         self._last_audit_hash: str = "0000000000000000000000000000000000000000000000000000000000000000"
+
+        # Active learning flywheel (optional persistent miss log)
+        self.flywheel: Any | None = None
+        if miss_log_path is not None:
+            from latticememory.flywheel import LatticeFlywheel
+            self.flywheel = LatticeFlywheel(miss_log_path)
 
         # Resolve compatibility between enable_hamming_router and hamming_router_mode
         if enable_hamming_router is not None and hamming_router_mode is not None:
@@ -489,6 +497,14 @@ class LatticeLLMProxy:
                 key_hex=refetch_key_hex,
                 response_text=response_text,
             )
+
+            if proxy.flywheel is not None:
+                proxy.flywheel.log_miss(
+                    prompt,
+                    e8_key_hex=refetch_key_hex if refetch_key_hex != "unknown" else None,
+                    nearest_cache_prompt=cached.shadow_source_prompt if cached.shadow_hit else None,
+                    nearest_cache_distance=cached.shadow_hamming_distance if cached.shadow_hit else -1,
+                )
 
             headers = {
                 "X-Lattice-Cache": "MISS",

@@ -20,6 +20,7 @@ audit_log_path = os.getenv("LATTICE_AUDIT_LOG_PATH", None)
 divergence_threshold = float(os.getenv("LATTICE_DIVERGENCE_THRESHOLD", "0.1")) if os.getenv("LATTICE_DIVERGENCE_THRESHOLD") else None
 fp_budget = float(os.getenv("LATTICE_FP_BUDGET", "0.0"))
 calibration_data_path = os.getenv("LATTICE_CALIBRATION_DATA_PATH", None)
+miss_log_path = os.getenv("LATTICE_MISS_LOG_PATH", None)
 
 import warnings
 
@@ -48,6 +49,7 @@ proxy = LatticeLLMProxy(
     divergence_threshold=divergence_threshold,
     fp_budget=fp_budget,
     calibration_data_path=calibration_data_path,
+    miss_log_path=miss_log_path,
 )
 
 # Create FastAPI app

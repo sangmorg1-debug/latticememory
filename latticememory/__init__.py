@@ -41,6 +41,8 @@ from .pipeline import LatticeDataPipeline
 from .proxy import LatticeLLMProxy
 from .stream import LatticeStreamDedup
 from .agent_sync import AgentMemorySync, make_autogen_sync_tools, LangGraphLatticeAdapter
+from .flywheel import LatticeFlywheel, MissRecord, MissCluster
+from .qa_bot import LatticeQABot, QAResponse
 from .training import (
     E8RoutingLoss,
     E8RoutingLossOutput,
@@ -116,4 +118,9 @@ __all__ = [
     "validate_calibration_data_schema",
     "compute_calibration_data_sha256",
     "validate_precalibrated_artifact_schema",
+    "LatticeFlywheel",
+    "MissRecord",
+    "MissCluster",
+    "LatticeQABot",
+    "QAResponse",
 ]
