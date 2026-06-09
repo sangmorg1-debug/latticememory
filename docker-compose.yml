@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  latticememory-proxy:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - LATTICE_UPSTREAM_URL=https://api.openai.com/v1/chat/completions
+      - LATTICE_ENCODER_MODEL=dfrokido/bge-large-e8-snap
+      - LATTICE_HAMMING_THRESHOLD=70
+      - LATTICE_COMPLIANCE_MODE=${LATTICE_COMPLIANCE_MODE:-false}
+      - LATTICE_AUDIT_LOG_PATH=/data/audit.jsonl
+      - LATTICE_SQLITE_PATH=/data/cache.db
+    volumes:
+      - lattice-data:/data
+    networks:
+      - lattice
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+
+  # Optional: Redis-backed cache for multi-instance deployments
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - lattice
+    profiles:
+      - with-redis
+
+volumes:
+  lattice-data:
+  redis-data:
+
+networks:
+  lattice:
+    driver: bridge
