@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import math
 import os
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -51,6 +50,11 @@ def _e8_nearest(x: torch.Tensor) -> torch.Tensor:
 
 
 def _build_shell1_codebook(device: torch.device) -> torch.Tensor:
+    """Build the 240-vector E8 shell-1 codebook, unit-normalized.
+
+    Unit-normalized at build time so _quantize_to_indices can use a direct
+    matmul+argmax without the intermediate Babai snapping step.
+    """
     vecs: list[list[float]] = []
     for i, j in combinations(range(8), 2):
         for si in (1.0, -1.0):
@@ -63,10 +67,10 @@ def _build_shell1_codebook(device: torch.device) -> torch.Tensor:
         signs = [1.0 if (mask >> bit) & 1 == 0 else -1.0 for bit in range(8)]
         if signs.count(-1.0) % 2 == 0:
             vecs.append([s * 0.5 for s in signs])
-    codebook = torch.tensor(vecs, dtype=torch.float32, device=device)
-    if codebook.shape != (240, 8):
-        raise RuntimeError(f"expected E8 shell-1 codebook shape (240, 8), got {tuple(codebook.shape)}")
-    return codebook
+    raw = torch.tensor(vecs, dtype=torch.float32, device=device)
+    if raw.shape != (240, 8):
+        raise RuntimeError(f"expected E8 shell-1 codebook shape (240, 8), got {tuple(raw.shape)}")
+    return F.normalize(raw, p=2, dim=-1)
 
 
 class E8LatticeDB:
@@ -108,13 +112,33 @@ class E8LatticeDB:
 
     @torch.no_grad()
     def _quantize_to_indices(self, embedding: torch.Tensor | Iterable[float]) -> bytes:
+        """Quantize an embedding to a 128-byte E8 block-address key.
+
+        Each 8-dim block is unit-normalized then matched to the nearest
+        shell-1 codeword via cosine similarity (argmax over dot products).
+        """
         vector = self._as_vector(embedding)
         blocks = vector.reshape(-1, 8)
-        beta = blocks.norm(p=2, dim=-1).clamp_min(1e-8) / math.sqrt(2.0)
-        snapped = _e8_nearest(blocks / beta.unsqueeze(-1))
-        snapped_unit = snapped / snapped.norm(dim=-1, keepdim=True).clamp_min(1e-8)
-        dots = snapped_unit @ self._codebook.T / math.sqrt(2.0)
-        return bytes(dots.argmax(dim=-1).tolist())
+        unit_blocks = F.normalize(blocks, p=2, dim=-1)
+        return bytes(unit_blocks.matmul(self._codebook.T).argmax(dim=-1).tolist())
+
+    @torch.no_grad()
+    def _quantize_batch(self, embeddings: torch.Tensor) -> list[bytes]:
+        """Quantize (N, d_model) embeddings to N E8 keys in one batched matmul.
+
+        Equivalent to calling _quantize_to_indices N times but ~N× faster
+        because the entire batch is reshaped into blocks and processed as a
+        single matrix multiply.
+        """
+        vectors = torch.as_tensor(embeddings, dtype=torch.float32, device=self.device)
+        if vectors.dim() != 2 or vectors.shape[1] != self.d_model:
+            raise ValueError(f"expected shape [N, {self.d_model}], got {tuple(vectors.shape)}")
+        N = vectors.shape[0]
+        blocks = vectors.reshape(N * self.num_blocks, 8)
+        unit_blocks = F.normalize(blocks, p=2, dim=-1)
+        indices = unit_blocks.matmul(self._codebook.T).argmax(dim=-1)  # (N * num_blocks,)
+        rows = indices.reshape(N, self.num_blocks).tolist()
+        return [bytes(row) for row in rows]
 
     def add_document(
         self,
@@ -133,6 +157,25 @@ class E8LatticeDB:
         self._keys[doc_id] = key
         return key
 
+    def delete_document(self, doc_id: str) -> bool:
+        """Remove a single document from the lattice.  Returns True if it existed."""
+        key = self._keys.pop(doc_id, None)
+        if key is None:
+            return False
+        bucket = self.hash_store.get(key)
+        if bucket is not None:
+            try:
+                bucket.remove(doc_id)
+            except ValueError:
+                pass
+        self._embeddings.pop(doc_id, None)
+        self._metadata.pop(doc_id, None)
+        return True
+
+    def delete_batch(self, doc_ids: Iterable[str]) -> int:
+        """Remove multiple documents.  Returns count actually deleted."""
+        return sum(1 for d in doc_ids if self.delete_document(d))
+
     def add_batch(
         self,
         doc_ids: Iterable[str],
@@ -143,8 +186,16 @@ class E8LatticeDB:
         if vectors.dim() != 2 or vectors.shape[1] != self.d_model:
             raise ValueError(f"expected embeddings shape [N, {self.d_model}], got {tuple(vectors.shape)}")
         meta_list = list(metadatas) if metadatas is not None else [None] * vectors.shape[0]
-        for doc_id, vector, metadata in zip(doc_ids, vectors, meta_list):
-            self.add_document(str(doc_id), vector, metadata)
+        keys = self._quantize_batch(vectors)
+        for doc_id_raw, vector, key, metadata in zip(doc_ids, vectors, keys, meta_list):
+            doc_id = str(doc_id_raw)
+            if doc_id in self._keys:
+                old_key = self._keys[doc_id]
+                self.hash_store[old_key] = [e for e in self.hash_store[old_key] if e != doc_id]
+            self.hash_store[key].append(doc_id)
+            self._embeddings[doc_id] = F.normalize(vector, p=2, dim=0)
+            self._metadata[doc_id] = dict(metadata or {})
+            self._keys[doc_id] = key
 
     def retrieve_exact(self, query: torch.Tensor | Iterable[float]) -> list[str]:
         key = self._quantize_to_indices(query)

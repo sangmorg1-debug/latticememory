@@ -83,7 +83,7 @@ def run_shadow_demo(
     else:
         from sentence_transformers import SentenceTransformer
         encoder = SentenceTransformer(model)
-        d_model = int(encoder.get_sentence_embedding_dimension())
+        d_model = int(encoder.get_embedding_dimension())
 
     # Build E8 key table for calibration set (canonical prompts → cache entries)
     # We simulate: first time a prompt is seen, it is a cache miss and gets added.

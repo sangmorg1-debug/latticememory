@@ -96,6 +96,30 @@ class HammingRouter:
             self._packed_matrix = None  # invalidate cache
         return raw
 
+    def add_bulk(self, texts: list[str], values: list[Any]) -> list[bytes]:
+        """Encode all texts in one model.encode() call and store each with its value.
+
+        More efficient than calling add() in a loop for large batches because
+        the encoder runs once and the E8 keys are computed in a single matmul.
+        Returns the raw 128-byte E8 key for each text.
+        """
+        if not texts:
+            return []
+        embs = self._encoder.encode(
+            texts, normalize_embeddings=True, convert_to_numpy=True, show_progress_bar=False
+        )
+        results = []
+        for emb, value in zip(embs, values):
+            key_arr = self._emb_to_key_arr(emb)
+            raw = key_arr.tobytes()
+            if raw not in self._key_set:
+                self._key_set.add(raw)
+                self._keys.append(key_arr)
+                self._values.append(value)
+                self._packed_matrix = None
+            results.append(raw)
+        return results
+
     def add_from_key(self, e8_key: bytes, value: Any) -> None:
         """Store a pre-computed E8 key with value. Silently deduplicates identical keys."""
         if e8_key not in self._key_set:
@@ -103,6 +127,22 @@ class HammingRouter:
             self._keys.append(np.frombuffer(e8_key, dtype=np.uint8).copy())
             self._values.append(value)
             self._packed_matrix = None  # invalidate cache
+
+    def remove_by_value(self, value: Any) -> bool:
+        """Remove the first entry whose stored value equals ``value``.
+
+        Returns True if an entry was found and removed.  The packed matrix cache
+        is invalidated so the next lookup uses the updated key list.
+        """
+        for i, v in enumerate(self._values):
+            if v == value:
+                raw = self._keys[i].tobytes()
+                self._keys.pop(i)
+                self._values.pop(i)
+                self._key_set.discard(raw)
+                self._packed_matrix = None
+                return True
+        return False
 
     def clear(self) -> None:
         self._keys.clear()

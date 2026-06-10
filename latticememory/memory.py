@@ -341,6 +341,17 @@ class RFSnapLatticeMemory:
         vector = self.lattice._as_vector(embedding)
         return self.lattice._quantize_to_indices(vector)
 
+    def lattice_keys_for_batch(
+        self, embeddings: "torch.Tensor | list"
+    ) -> "list[bytes]":
+        """Compute E8 keys for a batch of embeddings in one matmul.
+
+        Equivalent to calling lattice_key_for() N times but significantly
+        faster for large batches.
+        """
+        vecs = torch.as_tensor(embeddings, dtype=torch.float32, device=self.lattice.device)
+        return self.lattice._quantize_batch(vecs)
+
     def get_document_ids_by_lattice_key(self, lattice_key: bytes) -> list[str]:
         """Retrieve the document IDs mapped to this E8 lattice key."""
         return list(self.lattice.hash_store.get(lattice_key, []))
@@ -406,6 +417,51 @@ class RFSnapLatticeMemory:
         if self.sqlite_store is not None:
             lattice_keys = {doc.doc_id: self.lattice._keys[doc.doc_id] for doc in docs}
             self.sqlite_store.add_documents(docs, lattice_keys)
+
+    def delete_documents(self, doc_ids: list[str]) -> int:
+        """Remove documents from all in-memory structures and SQLite.
+
+        Returns the number of documents actually deleted.
+
+        Rebuilds the dense ``_ann_embeddings`` matrix if necessary (O(N) in
+        number of remaining documents).  Deletion is expected to be rare so
+        this is acceptable.
+        """
+        ids_set = set(doc_ids)
+        if not ids_set:
+            return 0
+
+        deleted = 0
+        for doc_id in ids_set:
+            if doc_id not in self._doc_id_set:
+                continue
+            self.lattice.delete_document(doc_id)
+            self._texts.pop(doc_id, None)
+            self._metadata.pop(doc_id, None)
+            self._doc_id_set.discard(doc_id)
+            deleted += 1
+
+        if deleted == 0:
+            return 0
+
+        # Rebuild the ordered structures so indices remain consistent
+        old_ids = self._doc_ids
+        new_ids = [d for d in old_ids if d not in ids_set]
+        self._doc_ids = new_ids
+        self._doc_index = {d: i for i, d in enumerate(new_ids)}
+
+        # Rebuild the ANN embedding matrix
+        if self._ann_embeddings is not None:
+            keep = [i for i, d in enumerate(old_ids) if d not in ids_set]
+            if keep:
+                self._ann_embeddings = self._ann_embeddings[keep]
+            else:
+                self._ann_embeddings = None
+
+        if self.sqlite_store is not None:
+            self.sqlite_store.delete_documents(list(ids_set))
+
+        return deleted
 
     def retrieve(self, query: MemoryQuery) -> MemoryResult:
         if query.top_k <= 0:
@@ -670,6 +726,13 @@ class RFSnapLatticeMemory:
 
     def lattice_key_for(self, embedding: torch.Tensor | Iterable[float]) -> bytes:
         return self.lattice._quantize_to_indices(embedding)
+
+    def lattice_keys_for_batch(
+        self, embeddings: "torch.Tensor | list"
+    ) -> "list[bytes]":
+        """Compute E8 keys for a batch of embeddings in one matmul."""
+        vecs = torch.as_tensor(embeddings, dtype=torch.float32, device=self.lattice.device)
+        return self.lattice._quantize_batch(vecs)
 
     def stats(self) -> dict:
         return {
