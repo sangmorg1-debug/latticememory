@@ -239,7 +239,7 @@ These appear in the codebase but are not production-ready claims:
 | --- | --- |
 | Cross-modal alignment (image↔text E8 key match) | Demo artifact — `FakeEncoder` with identical text prefixes, 4-pair overfit. Not validated with real CLIP embeddings. |
 | Cross-model Semantic DNS (MiniLM↔BGE key parity) | Demo artifact — synthetic embeddings from a shared latent space. Real encoder families are not linearly related. |
-| Asymmetric QA retrieval (question→passage via E8) | Structurally infeasible. Hamming gap is 88–106/128 for semantic pairs. No training fixes this at 1024D. |
+| Asymmetric QA retrieval (question→passage via E8) | **Experimentally confirmed infeasible (2026-06-10).** DPR (the best pretrained QA encoder, 78% recall@10 on MS-MARCO) produces mean Hamming 71/96 blocks on matched pairs vs 90 random baseline. Min Hamming across 200 matched pairs: 49. Zero pairs within 30 blocks. Full fine-tuning experiments (2k examples, 15 epochs, multiple loss configs) all ended in collapse or oscillation — never producing useful routing. E8 routing requires matched pairs within ~4 blocks; the QA geometry places them ~71 blocks apart regardless of training. |
 | Hallucination grounding signal | Architecture exists in concept, not implemented or validated. |
 | Encoder drift monitoring (snapshot compare) | `detect_drift()` in the flywheel is for prompt intent drift, not encoder model drift. Snapshot comparison not built. |
 
