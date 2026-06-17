@@ -32,7 +32,7 @@ latticememory-calibrate-proxy = "latticememory.calibrate_proxy:main"
 latticememory-serve-proxy = "latticememory.proxy_server:main"
 
 [project.urls]
-Homepage = "https://github.com/sangmorg1-debug/e8-Project"
+Homepage = "https://github.com/sangmorg1-debug/latticememory"
 "HuggingFace Space" = "https://huggingface.co/spaces/dfrokido/LatticeMemory"
 
 [tool.setuptools.packages.find]

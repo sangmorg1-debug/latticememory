@@ -1,6 +1,6 @@
 # LatticeMemory Product Roadmap
 
-## Updated 2026-06-09 — grounded in current code and test results
+## Updated 2026-06-17 — grounded in current code and test results
 
 ---
 
@@ -49,7 +49,7 @@ natural Hamming distance of 88–106 out of 128 blocks, regardless of training. 
 structural property of the E8 Voronoi tessellation at 1024D, not a solvable bug.
 
 Everything in this roadmap that claims a product capability has been built and passes the
-362-test suite as of this date. Capabilities not yet built are marked explicitly.
+407-test suite as of this date. Capabilities not yet built are marked explicitly.
 
 ---
 
@@ -149,7 +149,7 @@ ML data vendors, news/media aggregators paying cloud bills for near-duplicate co
 
 ### 4. Compliance Cache (Regulated Industry Proxy Mode)
 
-**Fit: high. Built: core complete. Blocker: `POST /validate` human sign-off endpoint.**
+**Fit: high. Built: complete. Blocker: same as #1 (PyPI publish).**
 
 The proxy in compliance mode only serves cached responses that have been explicitly approved.
 New responses are held until a human reviewer signs off. Every cache hit is logged with a
@@ -162,12 +162,14 @@ tamper-evident chain.
 - `audit_log_path` — every hit logged as `{prompt, e8_key, served_response, timestamp, upstream_hash}`
 - `divergence_threshold` — if a new model response deviates from the cached one by >threshold
   cosine distance, it is routed to review instead of served
+- `POST /v1/compliance/validate/{cache_id}` — human approval endpoint with HMAC audit chain
+- `GET /v1/compliance/audit-log` — full tamper-evident audit log export
+- `GET /v1/compliance/pending` — reviewer queue: list all entries awaiting approval
+- `LATTICE_REVIEWER_KEY` / `reviewer_key` — role separation: reviewers can approve but not delete
 
 **What is not yet built:**
 
-- `POST /validate/{cache_id}` endpoint — the human approval step
-- Signed audit export (JSON with HMAC chain for regulatory submission)
-- Role-based admin key separation (reviewer key vs. admin key)
+- Dashboard UI for the reviewer queue
 
 **Who buys it:** Financial services, healthcare AI deployments, legal research tools —
 anywhere an LLM response is a regulated statement that must be pre-approved. The pitch is
@@ -249,10 +251,10 @@ These appear in the codebase but are not production-ready claims:
 
 | Priority | Product | Status | What's blocking |
 | --- | --- | --- | --- |
-| **1** | LLM Cache Proxy | Code complete, 362 tests pass | `twine upload`, Docker Hub push |
+| **1** | LLM Cache Proxy | Code complete, 407 tests pass | `twine upload`, Docker Hub push |
 | **2** | Multi-Tenant Cache | Code complete | Same as #1 |
-| **3** | Semantic Dedup | Core complete | Kafka adapter, CLI wrapper |
-| **4** | Compliance Cache | Core complete | `POST /validate` endpoint |
+| **3** | Semantic Dedup | Core complete | Kafka adapter |
+| **4** | Compliance Cache | **Complete** (reviewer key + pending queue + HMAC chain) | Same as #1 |
 | **5** | Agent Memory | Core + adapters exist | End-to-end demo, network transport |
 | **6** | Flywheel | Complete as proxy add-on | Review UI |
 
@@ -302,9 +304,9 @@ Paraphrase cache benchmark: exact-match hits = **100%**, paraphrase hits = **0%*
 
 1. Add `lattice dedup <file>` CLI command (wraps `LatticeDataPipeline.deduplicate_text`)
 
-### Gate 3 — compliance cache (regulated market unlock)
+### Gate 3 — compliance cache (DONE 2026-06-17)
 
-1. Add `POST /validate/{cache_id}` to proxy — 50-line endpoint that flips `approved=True` on a pending entry
+1. ~~Add `POST /validate/{cache_id}` to proxy~~ — **shipped**: `POST /v1/compliance/validate/{cache_id}` with HMAC audit chain, `GET /v1/compliance/pending` reviewer queue, `LATTICE_REVIEWER_KEY` role separation
 
 ### Gate 4 — agent memory demo
 
@@ -329,7 +331,7 @@ Paraphrase cache benchmark: exact-match hits = **100%**, paraphrase hits = **0%*
 ## Development Notes
 
 - **Python:** 3.11.9, Windows 11
-- **Tests:** `python -m pytest tests/ -q` → 397 pass (as of 2026-06-09)
+- **Tests:** `python -m pytest tests/ -q` → 407 pass (as of 2026-06-17)
 - **Encoder model:** `dfrokido/bge-large-e8-snap` (HuggingFace) — 1024D, produces E8 keys
 - **Key size:** 128 bytes (1024D) / 48 bytes (384D)
 - **Compression:** 32× vs float32 on 1024D (key only)

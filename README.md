@@ -1,10 +1,10 @@
 # LatticeMemory
 
-**Semantic cache, dedup, and hybrid memory — 10.7× compressed E8 keys for instant repeat-query hits, dense fallback for novel retrieval.**
+**Semantic cache, dedup, and hybrid memory — 32× compressed E8 keys for instant repeat-query hits, dense fallback for novel retrieval.**
 
 LatticeMemory uses the [E8 lattice](https://en.wikipedia.org/wiki/E8_lattice) — the densest sphere packing in 8 dimensions — as a deterministic address space for text embeddings. Every 1024-dim embedding snaps to a 128-byte E8 key. Identical or near-identical text lands on the same key; novel queries fall through to a dense float32/Int8 fallback.
 
-[**Live Demo →**](https://huggingface.co/spaces/dfrokido/LatticeMemory) | [**Model →**](https://huggingface.co/dfrokido/bge-large-e8-snap) | [**GitHub →**](https://github.com/sangmorg1-debug/e8-Project)
+[**Live Demo →**](https://huggingface.co/spaces/dfrokido/LatticeMemory) | [**Model →**](https://huggingface.co/dfrokido/bge-large-e8-snap) | [**GitHub →**](https://github.com/sangmorg1-debug/latticememory)
 
 ---
 
@@ -29,7 +29,7 @@ E8 keys route fast for content that is semantically identical or near-identical.
 | Method | Compression | Index / 1M docs | Retrieval p50 @ 100K docs |
 |---|---:|---:|---:|
 | Float32 | 1× | 4.1 GB | 20.8 ms |
-| **LatticeMemory E8 keys** | **10.7×** | **0.38 GB** | O(1) on key hit |
+| **LatticeMemory E8 keys** | **32×** | **0.13 GB** | O(1) on key hit |
 
 **Fallback quality (1K docs, 100 paraphrase queries, recall vs float32):**
 
@@ -43,7 +43,7 @@ E8 keys route fast for content that is semantically identical or near-identical.
 - **Int4 fallback** is retrieval-unsafe for QA. Use only for dedup/clustering where approximate grouping is acceptable.
 - **STS quality:** `bge-large-e8-snap` scores 0.8714 vs 0.8637 float baseline (+0.0077).
 
-> **Compression basis:** 1 address byte + 2 scale bytes per 8-dim block = 384 bytes for 1024-dim vs 4,096 bytes float32 = 10.7×. Ratio applies to E8 key storage only. Hybrid mode (key + fallback index) stores both representations; the E8 layer acts as a fast-path cache in front of the dense index.
+> **Compression basis:** 1 address byte per 8-dim block × 128 blocks = 128 bytes for 1024-dim vs 4,096 bytes float32 = 32×. Ratio applies to E8 key storage only. Hybrid mode (key + fallback index) stores both representations; the E8 layer acts as a fast-path cache in front of the dense index.
 
 ---
 
@@ -169,10 +169,16 @@ for doc in docs:
 
 ## Production Service
 
+```bash
+pip install 'latticememory[proxy]'
+```
+
 ```python
 from latticememory.service import create_app
+from latticememory.text_runtime import RFSnapTextMemory
 import uvicorn
 
+runtime = RFSnapTextMemory()
 app = create_app(text_runtime=runtime)
 uvicorn.run(app, host="0.0.0.0", port=8000)
 ```
