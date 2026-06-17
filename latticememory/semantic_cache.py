@@ -21,6 +21,10 @@ class SemanticCacheEntry:
     metadata: dict = field(default_factory=dict)
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
+    ttl_seconds: float | None = None  # None = never expires
+
+    def is_expired(self) -> bool:
+        return self.ttl_seconds is not None and time.time() > self.created_at + self.ttl_seconds
 
 
 @dataclass(frozen=True)
@@ -102,7 +106,14 @@ class RFSnapSemanticCache:
     def size(self) -> int:
         return len(self._entries)
 
-    def put(self, prompt: str, *, value: Any, metadata: dict | None = None) -> SemanticCacheEntry:
+    def put(
+        self,
+        prompt: str,
+        *,
+        value: Any,
+        metadata: dict | None = None,
+        ttl_seconds: float | None = None,
+    ) -> SemanticCacheEntry:
         embedding = self.runtime._encode_texts([prompt])[0]
         lattice_key = self.runtime.memory.lattice_key_for(embedding)
         cache_id = self._cache_id_for(lattice_key)
@@ -116,6 +127,7 @@ class RFSnapSemanticCache:
             metadata=dict(metadata or {}),
             created_at=existing.created_at if existing is not None else now,
             updated_at=now,
+            ttl_seconds=ttl_seconds,
         )
         self._entries[cache_id] = entry
         self.runtime.memory.add_documents([
@@ -125,6 +137,63 @@ class RFSnapSemanticCache:
             # add_from_key deduplicates internally — no separate tracking needed
             self._hamming_router.add_from_key(lattice_key, cache_id)
         return entry
+
+    def delete(self, cache_id: str) -> bool:
+        """Remove a cache entry by ID from all backing stores.
+
+        Propagates to the Hamming router and the underlying runtime memory
+        (including SQLite when configured).  Returns True if the entry existed.
+        """
+        entry = self._entries.pop(cache_id, None)
+        if entry is None:
+            return False
+        if self._hamming_router is not None:
+            self._hamming_router.remove_by_value(cache_id)
+        self.runtime.memory.delete_documents([cache_id])
+        return True
+
+    def evict_expired(self) -> int:
+        """Delete all TTL-expired entries. Returns the count of evicted entries."""
+        expired = [cid for cid, e in list(self._entries.items()) if e.is_expired()]
+        for cid in expired:
+            self.delete(cid)
+        return len(expired)
+
+    def restore_entry(self, entry: "SemanticCacheEntry") -> None:
+        """Restore a pre-built entry (e.g. from a JSONL export) without re-encoding.
+
+        Writes to ``_entries``, the Hamming router, and SQLite.  The embedding
+        stored in SQLite is a zero placeholder — sufficient for exact lattice key
+        lookup on reload (``_load_from_store`` uses the stored key directly) but
+        incorrect for ANN cosine reranking.  Acceptable for import use cases where
+        exact key matching is the only retrieval path.
+        """
+        import numpy as np
+        from .memory import MemoryDocument
+
+        self._entries[entry.cache_id] = entry
+        if self._hamming_router is not None and entry.lattice_key:
+            self._hamming_router.add_from_key(entry.lattice_key, entry.cache_id)
+
+        sqlite_store = getattr(self.runtime.memory, "sqlite_store", None)
+        if sqlite_store is not None and entry.lattice_key:
+            d = self.runtime.d_model or 1024
+            zero_emb = np.zeros(d, dtype=np.float32)
+            meta = dict(entry.metadata)
+            meta.update({
+                "cache_id": entry.cache_id,
+                "source_prompt": entry.prompt,
+                "cache_created_at": entry.created_at,
+                "cache_updated_at": entry.updated_at,
+                "cache_value": entry.value,
+            })
+            doc = MemoryDocument(
+                doc_id=entry.cache_id,
+                text=entry.prompt,
+                embedding=zero_emb,
+                metadata=meta,
+            )
+            sqlite_store.add_documents([doc], {entry.cache_id: entry.lattice_key})
 
     def get(
         self,
@@ -143,17 +212,20 @@ class RFSnapSemanticCache:
         cache_id = self._cache_id_for(lattice_key)
         entry = self._entries.get(cache_id)
         if entry is not None:
-            return SemanticCacheResult(
-                hit=True,
-                hit_type="exact",
-                value=entry.value,
-                cache_id=entry.cache_id,
-                lattice_key=lattice_key,
-                source_prompt=entry.prompt,
-                metadata=dict(entry.metadata),
-                retrieval_path="lattice_exact",
-                latency_ms=(time.time() - t0) * 1000,
-            )
+            if entry.is_expired():
+                self.delete(cache_id)
+            else:
+                return SemanticCacheResult(
+                    hit=True,
+                    hit_type="exact",
+                    value=entry.value,
+                    cache_id=entry.cache_id,
+                    lattice_key=lattice_key,
+                    source_prompt=entry.prompt,
+                    metadata=dict(entry.metadata),
+                    retrieval_path="lattice_exact",
+                    latency_ms=(time.time() - t0) * 1000,
+                )
 
         # Hamming-NN path: opt-in, off by default. WARNING: false-positive risk in dense caches
         # with adjacent-but-distinct prompts (see threshold calibration notes in hamming_router.py).

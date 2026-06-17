@@ -43,6 +43,8 @@ from .stream import LatticeStreamDedup
 from .agent_sync import AgentMemorySync, make_autogen_sync_tools, LangGraphLatticeAdapter
 from .flywheel import LatticeFlywheel, MissRecord, MissCluster
 from .qa_bot import LatticeQABot, QAResponse
+from .redis_store import LatticeRedisStore, patch_cache_with_redis
+from .multi_cache import LatticeMultiCache
 from .training import (
     E8RoutingLoss,
     E8RoutingLossOutput,
@@ -123,4 +125,7 @@ __all__ = [
     "MissCluster",
     "LatticeQABot",
     "QAResponse",
+    "LatticeRedisStore",
+    "patch_cache_with_redis",
+    "LatticeMultiCache",
 ]

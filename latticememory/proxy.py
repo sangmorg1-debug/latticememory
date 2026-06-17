@@ -58,6 +58,10 @@ class LatticeLLMProxy:
         divergence_threshold: float | None = None,
         # Active learning flywheel
         miss_log_path: str | None = None,
+        # Management API — gate mutation endpoints behind this key (None = open)
+        admin_key: str | None = None,
+        # Warm-start: load entries from a CSV/JSON/JSONL file at startup
+        warm_path: str | None = None,
     ):
         self.upstream_url = upstream_url
         self.upstream_api_key = upstream_api_key
@@ -73,6 +77,9 @@ class LatticeLLMProxy:
         self.divergence_threshold = divergence_threshold
         self.audit_events: list[dict[str, Any]] = []
         self._last_audit_hash: str = "0000000000000000000000000000000000000000000000000000000000000000"
+
+        # Management API key (None = open, no auth)
+        self.admin_key: str | None = admin_key
 
         # Active learning flywheel (optional persistent miss log)
         self.flywheel: Any | None = None
@@ -248,6 +255,68 @@ class LatticeLLMProxy:
                 except Exception:
                     pass
 
+        # Warm-start: pre-populate cache from a CSV/JSON/JSONL file
+        if warm_path is not None:
+            self._warm_cache(warm_path)
+
+    def _warm_cache(self, path: str) -> int:
+        """Load Q&A pairs from a file into the cache at startup.
+
+        Supports CSV (columns: question, answer, intent_id), JSON (list of
+        dicts), and JSONL (one dict per line).  Returns the number of entries
+        added.  Missing answer/value is skipped with a warning.
+
+        CSV columns ``question`` and ``answer`` are required; ``intent_id``,
+        ``metadata``, and ``ttl_seconds`` are optional.
+        """
+        import csv as _csv
+        from pathlib import Path as _Path
+
+        p = _Path(path)
+        if not p.exists():
+            logger.warning("warm_path %s does not exist — skipping warm-start", path)
+            return 0
+
+        pairs: list[dict] = []
+        suffix = p.suffix.lower()
+        try:
+            if suffix == ".csv":
+                with open(p, encoding="utf-8") as f:
+                    for row in _csv.DictReader(f):
+                        pairs.append(dict(row))
+            elif suffix in (".json", ".jsonl"):
+                text = p.read_text(encoding="utf-8")
+                if suffix == ".jsonl":
+                    pairs = [json.loads(ln) for ln in text.splitlines() if ln.strip()]
+                else:
+                    data = json.loads(text)
+                    pairs = data if isinstance(data, list) else [data]
+            else:
+                logger.warning("warm_path %s: unsupported format %s — skipping", path, suffix)
+                return 0
+        except Exception as exc:
+            logger.warning("warm_path %s: failed to load: %s", path, exc)
+            return 0
+
+        added = 0
+        for row in pairs:
+            q = (row.get("question") or row.get("prompt") or "").strip()
+            v = row.get("answer") or row.get("value") or row.get("response")
+            if not q or v is None:
+                continue
+            meta: dict = {}
+            if row.get("intent_id"):
+                meta["intent_id"] = row["intent_id"]
+            if row.get("metadata") and isinstance(row["metadata"], dict):
+                meta.update(row["metadata"])
+            ttl = row.get("ttl_seconds")
+            self.cache.put(q, value=v, metadata=meta,
+                           ttl_seconds=float(ttl) if ttl is not None else None)
+            added += 1
+
+        logger.info("warm_path: loaded %d entries from %s", added, path)
+        return added
+
     def _log_audit_event(
         self,
         event_type: str,
@@ -303,6 +372,7 @@ class LatticeLLMProxy:
 
         app = FastAPI(title="LatticeMemory LLM Cache Proxy", version="0.1.0")
         app.state.proxy = self
+        app.state.admin_key = getattr(self, "admin_key", None)
 
         @app.get("/health")
         async def health(request: Request) -> dict[str, Any]:
@@ -337,6 +407,7 @@ class LatticeLLMProxy:
 
         @app.post("/v1/chat/completions")
         async def chat_completions(request: Request) -> JSONResponse:
+            from fastapi.responses import StreamingResponse as _StreamingResponse
             proxy: LatticeLLMProxy = request.app.state.proxy
             payload = await request.json()
             try:
@@ -344,8 +415,45 @@ class LatticeLLMProxy:
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=str(exc))
 
+            is_stream = bool(payload.get("stream", False))
+
             cached = proxy.cache.get(prompt)
             key_hex = cached.lattice_key.hex() if cached.lattice_key else "unknown"
+
+            # ---- Streaming cache hit: re-emit stored body as SSE ----
+            if cached.hit and is_stream:
+                is_validated = (
+                    cached.metadata.get("compliance_validated", False)
+                    if proxy.compliance_mode else True
+                )
+                if not (proxy.compliance_mode and proxy.validation_required and not is_validated):
+                    evt = proxy._log_audit_event(
+                        event_type="HIT",
+                        prompt=prompt,
+                        key_hex=key_hex,
+                        response_text=proxy._extract_response_text(cached.value),
+                    )
+                    headers = {
+                        "X-Lattice-Cache": "HIT",
+                        "X-Lattice-Retrieval-Path": cached.retrieval_path,
+                        "X-Lattice-Savings-USD": proxy._format_usd(proxy._estimate_savings(cached.value, prompt)),
+                        "X-Lattice-Compliance": "APPROVED" if proxy.compliance_mode else "NONE",
+                        "X-Lattice-Audit-Hash": evt["hash"],
+                    }
+                    return _StreamingResponse(
+                        proxy._cached_body_as_sse(cached.value, prompt),
+                        media_type="text/event-stream",
+                        headers=headers,
+                    )
+
+            # ---- Streaming miss: stream from upstream, cache on completion ----
+            if is_stream and not (cached.hit and proxy.compliance_mode and proxy.validation_required):
+                if not cached.hit:
+                    return _StreamingResponse(
+                        proxy._stream_upstream_and_cache(payload, prompt, cached),
+                        media_type="text/event-stream",
+                        headers={"X-Lattice-Cache": "MISS", "X-Lattice-Retrieval-Path": "miss"},
+                    )
 
             if cached.hit:
                 # If compliance is active, check validation flag
@@ -599,6 +707,190 @@ class LatticeLLMProxy:
                 "total_events": len(proxy.audit_events),
             }
 
+        # ------------------------------------------------------------------
+        # /v1/cache — live cache management (read-only by default;
+        # mutations require X-Lattice-Admin-Key header if admin_key is set)
+        # ------------------------------------------------------------------
+
+        def _check_admin(request: Request) -> None:
+            admin_key = app.state.admin_key if hasattr(app.state, "admin_key") else None
+            if admin_key:
+                provided = request.headers.get("X-Lattice-Admin-Key", "")
+                if provided != admin_key:
+                    raise HTTPException(status_code=403, detail="Invalid or missing X-Lattice-Admin-Key")
+
+        @app.get("/v1/cache")
+        async def list_cache_entries(
+            request: Request,
+            limit: int = 100,
+            offset: int = 0,
+            include_expired: bool = False,
+        ) -> dict[str, Any]:
+            """List all cache entries (paginated). Expired entries are excluded by default."""
+            proxy: LatticeLLMProxy = request.app.state.proxy
+            all_entries = list(proxy.cache._entries.values())
+            if not include_expired:
+                all_entries = [e for e in all_entries if not e.is_expired()]
+            page = all_entries[offset: offset + limit]
+            return {
+                "total": len(all_entries),
+                "offset": offset,
+                "limit": limit,
+                "entries": [
+                    {
+                        "cache_id":    e.cache_id,
+                        "prompt":      e.prompt,
+                        "e8_key":      e.lattice_key.hex() if e.lattice_key else None,
+                        "created_at":  e.created_at,
+                        "updated_at":  e.updated_at,
+                        "ttl_seconds": e.ttl_seconds,
+                        "expired":     e.is_expired(),
+                        "metadata":    e.metadata,
+                    }
+                    for e in page
+                ],
+            }
+
+        @app.get("/v1/cache/{cache_id}")
+        async def get_cache_entry(cache_id: str, request: Request) -> dict[str, Any]:
+            """Fetch a single cache entry by ID."""
+            proxy: LatticeLLMProxy = request.app.state.proxy
+            entry = proxy.cache._entries.get(cache_id)
+            if entry is None:
+                raise HTTPException(status_code=404, detail="Cache entry not found")
+            return {
+                "cache_id":    entry.cache_id,
+                "prompt":      entry.prompt,
+                "value":       entry.value,
+                "e8_key":      entry.lattice_key.hex() if entry.lattice_key else None,
+                "created_at":  entry.created_at,
+                "updated_at":  entry.updated_at,
+                "ttl_seconds": entry.ttl_seconds,
+                "expired":     entry.is_expired(),
+                "metadata":    entry.metadata,
+            }
+
+        @app.post("/v1/cache")
+        async def add_cache_entry(request: Request) -> dict[str, Any]:
+            """Add or update a cache entry. Requires admin key if configured."""
+            _check_admin(request)
+            proxy: LatticeLLMProxy = request.app.state.proxy
+            payload = await request.json()
+            prompt = payload.get("prompt")
+            value = payload.get("value")
+            if not prompt or value is None:
+                raise HTTPException(status_code=400, detail="'prompt' and 'value' are required")
+            metadata = payload.get("metadata", {})
+            ttl_seconds = payload.get("ttl_seconds")
+            entry = proxy.cache.put(
+                prompt, value=value, metadata=metadata,
+                ttl_seconds=float(ttl_seconds) if ttl_seconds is not None else None,
+            )
+            evt = proxy._log_audit_event(
+                event_type="CACHE_PUT",
+                prompt=prompt,
+                key_hex=entry.lattice_key.hex() if entry.lattice_key else "unknown",
+                response_text=proxy._extract_response_text(value) if isinstance(value, dict) else str(value)[:200],
+            )
+            return {
+                "status": "added",
+                "cache_id": entry.cache_id,
+                "e8_key": entry.lattice_key.hex() if entry.lattice_key else None,
+                "audit_hash": evt["hash"],
+            }
+
+        @app.delete("/v1/cache/{cache_id}")
+        async def delete_cache_entry(cache_id: str, request: Request) -> dict[str, Any]:
+            """Delete a cache entry by ID. Requires admin key if configured."""
+            _check_admin(request)
+            proxy: LatticeLLMProxy = request.app.state.proxy
+            deleted = proxy.cache.delete(cache_id)
+            if not deleted:
+                raise HTTPException(status_code=404, detail="Cache entry not found")
+            return {"status": "deleted", "cache_id": cache_id}
+
+        @app.post("/v1/cache/flush")
+        async def flush_cache(request: Request) -> dict[str, Any]:
+            """Delete ALL cache entries. Requires admin key if configured."""
+            _check_admin(request)
+            proxy: LatticeLLMProxy = request.app.state.proxy
+            n = proxy.cache.size
+            if proxy.cache._hamming_router is not None:
+                proxy.cache._hamming_router.clear()
+            proxy.cache._entries.clear()
+            return {"status": "flushed", "entries_removed": n}
+
+        @app.post("/v1/cache/evict_expired")
+        async def evict_expired_entries(request: Request) -> dict[str, Any]:
+            """Evict all TTL-expired entries. Requires admin key if configured."""
+            _check_admin(request)
+            proxy: LatticeLLMProxy = request.app.state.proxy
+            n = proxy.cache.evict_expired()
+            return {"status": "ok", "evicted": n}
+
+        @app.get("/v1/analytics")
+        async def analytics(request: Request) -> dict[str, Any]:
+            """Aggregated cache usage analytics — hit rate, intent frequency, cost savings, gaps."""
+            proxy: LatticeLLMProxy = request.app.state.proxy
+            events = proxy.audit_events
+
+            total = len(events)
+            hits   = sum(1 for e in events if e.get("event_type") == "HIT")
+            misses = sum(1 for e in events if e.get("event_type") == "MISS")
+
+            # Per-intent frequency from cache entries
+            intent_freq: dict[str, int] = {}
+            for entry in proxy.cache._entries.values():
+                meta = getattr(entry, "metadata", {}) or {}
+                iid = meta.get("intent_id")
+                if iid:
+                    intent_freq[iid] = intent_freq.get(iid, 0) + 1
+
+            # Estimate total savings: sum of savings header values from HIT events
+            savings_usd = 0.0
+            for e in events:
+                if e.get("event_type") == "HIT":
+                    meta = e.get("metadata", {})
+                    savings_usd += float(meta.get("savings_usd", 0.0))
+            # Fallback: estimate from proxy's own method
+            if savings_usd == 0.0 and hits > 0:
+                avg_prompt_tokens = 50
+                savings_usd = hits * (avg_prompt_tokens / 1000.0) * proxy.cost_per_1k_input_tokens_usd
+
+            # Flywheel stats
+            gap_summary: dict = {}
+            if proxy.flywheel is not None:
+                gap_summary = proxy.flywheel.stats()
+                clusters = proxy.flywheel.top_gaps(n=5, min_cluster_size=2)
+                gap_summary["top_gaps"] = [
+                    {"representative": c.representative, "size": c.size}
+                    for c in clusters
+                ]
+
+            # Rolling hit rate (last 100 events)
+            recent = events[-100:] if events else []
+            recent_hits   = sum(1 for e in recent if e.get("event_type") == "HIT")
+            recent_total  = len(recent)
+            rolling_hit_rate = recent_hits / recent_total if recent_total else 0.0
+
+            return {
+                "cache_entries":    proxy.cache.size,
+                "total_requests":   total,
+                "hits":             hits,
+                "misses":           misses,
+                "hit_rate":         round(hits / total, 4) if total else 0.0,
+                "rolling_hit_rate": round(rolling_hit_rate, 4),
+                "estimated_savings_usd": round(savings_usd, 6),
+                "intent_distribution": dict(sorted(intent_freq.items(), key=lambda x: -x[1])),
+                "flywheel": gap_summary,
+                "hamming_router": {
+                    "mode": proxy.hamming_router_mode,
+                    "calibrated": getattr(proxy, "hamming_router_calibrated", False),
+                    "recall": getattr(proxy, "hamming_router_recall", 0.0),
+                    "fp_rate": getattr(proxy, "hamming_router_fp_rate", 0.0),
+                },
+            }
+
         return app
 
     def _extract_prompt(self, payload: dict[str, Any]) -> str:
@@ -619,6 +911,110 @@ class LatticeLLMProxy:
             if joined:
                 return joined
         raise ValueError("messages must include a non-empty final content field")
+
+    async def _cached_body_as_sse(self, body: Any, prompt: str):
+        """Re-emit a cached non-streaming response as an SSE stream."""
+        import json as _json
+        text = self._extract_response_text(body)
+        model = "cached"
+        if isinstance(body, dict):
+            model = body.get("model", "cached")
+        chunk = {
+            "id": "chatcmpl-cache",
+            "object": "chat.completion.chunk",
+            "created": int(time.time()),
+            "model": model,
+            "choices": [{"index": 0, "delta": {"role": "assistant", "content": text}, "finish_reason": None}],
+        }
+        yield f"data: {_json.dumps(chunk)}\n\n"
+        done_chunk = {
+            "id": "chatcmpl-cache",
+            "object": "chat.completion.chunk",
+            "created": int(time.time()),
+            "model": model,
+            "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+        }
+        yield f"data: {_json.dumps(done_chunk)}\n\n"
+        yield "data: [DONE]\n\n"
+
+    async def _stream_upstream_and_cache(self, payload: dict[str, Any], prompt: str, cached_result: Any):
+        """Stream an SSE response from upstream; cache the assembled reply on completion."""
+        import json as _json
+
+        headers = {"Content-Type": "application/json"}
+        if self.upstream_api_key:
+            headers["Authorization"] = f"Bearer {self.upstream_api_key}"
+
+        # Strip stream key — we control streaming internally
+        stream_payload = {**payload, "stream": True}
+
+        chunks: list[str] = []
+        assembled_text = ""
+        model = payload.get("model", "unknown")
+
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                async with client.stream(
+                    "POST", self.upstream_url, json=stream_payload, headers=headers
+                ) as response:
+                    if response.status_code >= 400:
+                        err_body = await response.aread()
+                        yield f"data: {_json.dumps({'error': err_body.decode()})}\n\n"
+                        yield "data: [DONE]\n\n"
+                        return
+                    async for line in response.aiter_lines():
+                        if not line.startswith("data:"):
+                            continue
+                        data_str = line[5:].strip()
+                        if data_str == "[DONE]":
+                            break
+                        try:
+                            chunk = _json.loads(data_str)
+                        except Exception:
+                            continue
+                        delta = chunk.get("choices", [{}])[0].get("delta", {})
+                        if "content" in delta:
+                            assembled_text += delta["content"]
+                        model = chunk.get("model", model)
+                        # Forward chunk to client
+                        yield f"data: {_json.dumps(chunk)}\n\n"
+
+            yield "data: [DONE]\n\n"
+        except Exception as exc:
+            yield f"data: {_json.dumps({'error': str(exc)})}\n\n"
+            yield "data: [DONE]\n\n"
+            return
+
+        # Cache the complete response as a synthetic non-streaming body
+        if assembled_text:
+            synthetic_body: dict[str, Any] = {
+                "id": "chatcmpl-cached",
+                "object": "chat.completion",
+                "created": int(time.time()),
+                "model": model,
+                "choices": [{
+                    "index": 0,
+                    "message": {"role": "assistant", "content": assembled_text},
+                    "finish_reason": "stop",
+                }],
+                "usage": {"prompt_tokens": max(1, len(prompt) // 4), "completion_tokens": max(1, len(assembled_text) // 4), "total_tokens": 0},
+            }
+            metadata = {"model": model, "source": "stream"}
+            if self.compliance_mode:
+                metadata["compliance_validated"] = False
+            self.cache.put(prompt, value=synthetic_body, metadata=metadata)
+
+            refetch = self.cache.get(prompt)
+            key_hex = refetch.lattice_key.hex() if refetch.lattice_key else "unknown"
+            self._log_audit_event(event_type="MISS", prompt=prompt, key_hex=key_hex, response_text=assembled_text)
+            if self.flywheel is not None:
+                self.flywheel.log_miss(
+                    prompt,
+                    e8_key_hex=key_hex if key_hex != "unknown" else None,
+                    nearest_cache_prompt=cached_result.shadow_source_prompt if cached_result and cached_result.shadow_hit else None,
+                    nearest_cache_distance=cached_result.shadow_hamming_distance if cached_result and cached_result.shadow_hit else -1,
+                )
 
     async def _call_upstream(self, payload: dict[str, Any]) -> dict[str, Any]:
         from fastapi import HTTPException

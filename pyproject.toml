@@ -22,12 +22,14 @@ faiss = ["faiss-cpu"]
 llamaindex = ["llama-index-core"]
 hf = ["datasets>=2.0.0"]
 proxy = ["fastapi", "uvicorn", "httpx"]
+redis = ["redis>=4.0.0"]
 training = ["datasets>=2.0.0", "tqdm"]
 
 [project.scripts]
+lattice = "latticememory.cli:main"
 latticememory-train-msmarco = "latticememory.train_msmarco:main"
 latticememory-calibrate-proxy = "latticememory.calibrate_proxy:main"
-latticememory-serve-proxy = "latticememory.proxy_server:app"
+latticememory-serve-proxy = "latticememory.proxy_server:main"
 
 [project.urls]
 Homepage = "https://github.com/sangmorg1-debug/e8-Project"

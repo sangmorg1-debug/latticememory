@@ -21,6 +21,8 @@ divergence_threshold = float(os.getenv("LATTICE_DIVERGENCE_THRESHOLD", "0.1")) i
 fp_budget = float(os.getenv("LATTICE_FP_BUDGET", "0.0"))
 calibration_data_path = os.getenv("LATTICE_CALIBRATION_DATA_PATH", None)
 miss_log_path = os.getenv("LATTICE_MISS_LOG_PATH", None)
+warm_path     = os.getenv("LATTICE_WARM_PATH", None)
+admin_key     = os.getenv("LATTICE_ADMIN_KEY", None)
 
 import warnings
 
@@ -50,8 +52,28 @@ proxy = LatticeLLMProxy(
     fp_budget=fp_budget,
     calibration_data_path=calibration_data_path,
     miss_log_path=miss_log_path,
+    warm_path=warm_path,
+    admin_key=admin_key,
 )
 
 # Create FastAPI app
 app = proxy.create_app()
+
+
+def main() -> None:
+    """Entry point for the ``latticememory-serve-proxy`` console script."""
+    try:
+        import uvicorn
+    except ImportError:
+        raise SystemExit(
+            "uvicorn is required to serve the proxy. "
+            "Install with: pip install 'latticememory[proxy]'"
+        )
+    port = int(os.getenv("LATTICE_PORT", "8000"))
+    host = os.getenv("LATTICE_HOST", "0.0.0.0")
+    uvicorn.run(app, host=host, port=port)
+
+
+if __name__ == "__main__":
+    main()
 

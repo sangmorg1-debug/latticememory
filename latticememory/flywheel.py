@@ -438,6 +438,185 @@ class LatticeFlywheel:
         }
 
     # ------------------------------------------------------------------
+    # Aggregated data products
+    # ------------------------------------------------------------------
+
+    def intent_frequency(
+        self,
+        cache: "RFSnapSemanticCache | None" = None,
+        window_seconds: float | None = None,
+    ) -> list[dict]:
+        """Count how often each cluster of misses appears.
+
+        Returns a list of dicts sorted by frequency, suitable for a dashboard or
+        content-prioritisation queue.  Each entry:
+        ``{cluster_id, representative, size, first_seen, last_seen}``.
+
+        Parameters
+        ----------
+        cache:
+            If provided, annotates each cluster with whether a cache entry already
+            covers it (via centroid Hamming distance).
+        window_seconds:
+            If set, only consider misses logged within the last N seconds.
+        """
+        records = self.load_log()
+        if window_seconds is not None:
+            cutoff = time.time() - window_seconds
+            records = [r for r in records if r.timestamp >= cutoff]
+
+        if not records:
+            return []
+
+        records = self._fill_missing_keys(records)
+        records = [r for r in records if r.e8_key_hex]
+
+        keys_by_record = {r: bytes.fromhex(r.e8_key_hex) for r in records}
+        # Greedy cluster (same algo as cluster_gaps)
+        cluster_members: list[list[Any]] = []
+        cluster_keys: list[bytes] = []
+        for r in records:
+            key = keys_by_record[r]
+            best_cid, best_dist = None, self.cluster_threshold + 1
+            for cid, ckey in enumerate(cluster_keys):
+                d = _hamming(key, ckey)
+                if d < best_dist:
+                    best_dist, best_cid = d, cid
+            if best_cid is not None and best_dist <= self.cluster_threshold:
+                cluster_members[best_cid].append(r)
+                cluster_keys[best_cid] = _majority_key([keys_by_record[m] for m in cluster_members[best_cid]])
+            else:
+                cluster_members.append([r])
+                cluster_keys.append(key)
+
+        rows = []
+        for cid, (members, ckey) in enumerate(zip(cluster_members, cluster_keys)):
+            rep = min(members, key=lambda r: _hamming(keys_by_record[r], ckey))
+            timestamps = sorted(r.timestamp for r in members)
+            covered_by: str | None = None
+            if cache is not None:
+                best_cache_dist = 999
+                for entry in cache._entries.values():
+                    if entry.lattice_key:
+                        d = _hamming(ckey, entry.lattice_key)
+                        if d < best_cache_dist:
+                            best_cache_dist = d
+                            covered_by = entry.prompt if d <= 10 else None
+            rows.append({
+                "cluster_id":   cid,
+                "representative": rep.question,
+                "size":         len(members),
+                "first_seen":   timestamps[0],
+                "last_seen":    timestamps[-1],
+                "covered_by_cache": covered_by,
+            })
+
+        return sorted(rows, key=lambda r: -r["size"])
+
+    def detect_drift(
+        self,
+        window_seconds: float = 7 * 24 * 3600,
+        min_delta: int = 5,
+        min_cluster_size: int = 3,
+    ) -> list[dict]:
+        """Detect intents whose miss rate is increasing over time (query drift).
+
+        Clusters ALL records in [now-2W, now] jointly, then compares each
+        cluster's count in the recent half-window vs. the older half-window.
+        Returns clusters where ``recent - previous >= min_delta``.
+        Each entry: ``{representative, recent, previous, delta}``.
+
+        Parameters
+        ----------
+        window_seconds:
+            Half-window size. Compares [now - 2W, now - W] vs [now - W, now].
+        min_delta:
+            Minimum increase in cluster size to flag as drifting.
+        min_cluster_size:
+            Minimum total cluster size (both windows combined) to include.
+        """
+        now = time.time()
+        mid = now - window_seconds
+        old_start = mid - window_seconds
+
+        all_records = self._fill_missing_keys(self.load_log())
+        in_range = [r for r in all_records if r.e8_key_hex and r.timestamp >= old_start]
+        if not in_range:
+            return []
+
+        # Cluster all in-range records jointly so cluster identity is stable
+        cm: list[list] = []
+        ck: list[bytes] = []
+        for r in in_range:
+            key = bytes.fromhex(r.e8_key_hex)
+            best_cid, best_dist = None, self.cluster_threshold + 1
+            for cid, ckey in enumerate(ck):
+                d = _hamming(key, ckey)
+                if d < best_dist:
+                    best_dist, best_cid = d, cid
+            if best_cid is not None and best_dist <= self.cluster_threshold:
+                cm[best_cid].append(r)
+                ck[best_cid] = _majority_key([bytes.fromhex(m.e8_key_hex) for m in cm[best_cid]])
+            else:
+                cm.append([r])
+                ck.append(key)
+
+        drifting = []
+        for members, ckey in zip(cm, ck):
+            if len(members) < min_cluster_size:
+                continue
+            rep = min(members, key=lambda r: _hamming(bytes.fromhex(r.e8_key_hex), ckey))
+            recent_count = sum(1 for m in members if m.timestamp >= mid)
+            older_count  = sum(1 for m in members if old_start <= m.timestamp < mid)
+            delta = recent_count - older_count
+            if delta >= min_delta:
+                drifting.append({
+                    "representative": rep.question,
+                    "recent":   recent_count,
+                    "previous": older_count,
+                    "delta":    delta,
+                })
+
+        return sorted(drifting, key=lambda r: -r["delta"])
+
+    def federated_key_histogram(
+        self,
+        window_seconds: float | None = None,
+        top_n: int = 100,
+    ) -> list[dict]:
+        """Export E8 key frequency histogram — shareable without revealing raw text.
+
+        Returns the N most frequent E8 key patterns (by cluster centroid) with
+        their counts.  No prompt text is included.  This is the data format for
+        cross-deployment aggregation (federated insights):
+
+        ``[{centroid_key_hex, count, first_seen, last_seen}, ...]``
+
+        Share this with a LatticeMemory aggregation service to discover which
+        question clusters are common industry-wide, without exposing user queries.
+        """
+        clusters = self.cluster_gaps(min_cluster_size=1)
+        if window_seconds is not None:
+            cutoff = time.time() - window_seconds
+
+        rows = []
+        for c in clusters:
+            members = c.members
+            if window_seconds is not None:
+                members = [m for m in members if m.timestamp >= cutoff]
+            if not members:
+                continue
+            timestamps = sorted(m.timestamp for m in members)
+            rows.append({
+                "centroid_key_hex": c.centroid_key_hex,
+                "count":      len(members),
+                "first_seen": timestamps[0],
+                "last_seen":  timestamps[-1],
+            })
+
+        return sorted(rows, key=lambda r: -r["count"])[:top_n]
+
+    # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
