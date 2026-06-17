@@ -317,7 +317,8 @@ agent_a.register_peer(agent_b)
 agent_b.sync_from_peer(agent_a)
 
 # Push-broadcast: A broadcasts a new key to all registered peers
-new_key = agent_a.share(new_key)  # agent_b receives it immediately
+new_key = next(iter(agent_a.get_known_keys()))
+agent_a.share(new_key)  # agent_b receives it immediately
 
 # Diff: check what each side is missing
 diff = agent_a.diff(agent_b.get_known_keys())
@@ -374,6 +375,30 @@ lattice drift --log misses.jsonl --window 604800 --export drift_report.json
 
 ---
 
+## CLI IDE
+
+`lattice ide` opens a local terminal command center for BYOK AI chat, cache operations,
+proxy diagnostics, vertical discovery, and VS Code CLI bridging.
+
+```bash
+export LATTICE_IDE_BASE_URL=https://api.openai.com/v1
+export LATTICE_IDE_MODEL=gpt-4o-mini
+export LATTICE_IDE_API_KEY=sk-...
+
+lattice ide chat "Summarize the current cache analytics"
+lattice ide cache inspect --cache helpdesk.db
+lattice ide proxy doctor --port 8000
+lattice ide verticals list
+lattice ide vscode status
+```
+
+Run `lattice ide` with no arguments for an interactive `lm>` shell. The first IDE
+slice uses OpenAI-compatible chat endpoints, so it works with OpenAI and compatible
+BYOK gateways. VS Code integration uses the installed `code` command; it does not
+require a VS Code extension.
+
+---
+
 ## How It Works
 
 ```text
@@ -408,11 +433,11 @@ patch_cache_with_redis(cache, redis_url="redis://localhost:6379", namespace="hel
 
 ## Test Suite
 
-489 tests, all passing:
+491 tests, all passing:
 
 ```bash
 python -m pytest tests/ -q
-# 489 passed in ~40s
+# 491 passed in ~70s
 ```
 
 ---

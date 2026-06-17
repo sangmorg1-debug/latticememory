@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import pytest
+
+from latticememory import cli as lattice_cli
 from latticememory.ide import cli as ide_cli
 from latticememory.ide.lattice_ops import list_verticals, proxy_doctor
 
@@ -63,6 +66,18 @@ def test_cache_inspect_delegates_to_existing_cli(monkeypatch):
 
     assert ide_cli.main(["cache", "inspect", "--cache", "helpdesk.db", "--verbose", "--sample", "2"]) == 0
     assert captured == {"cache": "helpdesk.db", "verbose": True, "sample": 2}
+
+
+def test_top_level_ide_help_delegates_to_ide_parser(monkeypatch, capsys):
+    monkeypatch.setattr("sys.argv", ["lattice", "ide", "--help"])
+
+    with pytest.raises(SystemExit) as exc:
+        lattice_cli.main()
+
+    assert exc.value.code == 0
+    out = capsys.readouterr().out
+    assert "Configure BYOK provider" in out
+    assert "VS Code bridge" in out
 
 
 def test_interactive_loop_dispatches_single_command(monkeypatch, capsys):

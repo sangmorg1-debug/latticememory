@@ -634,6 +634,11 @@ def cmd_ide(args: argparse.Namespace) -> int:
 # ---------------------------------------------------------------------------
 
 def main() -> int:
+    if len(sys.argv) > 1 and sys.argv[1] == "ide":
+        from latticememory.ide.cli import main as ide_main
+
+        return ide_main(sys.argv[2:])
+
     parser = argparse.ArgumentParser(
         prog="lattice",
         description="LatticeMemory CLI — batch cache operations and proxy management",
@@ -707,7 +712,7 @@ def main() -> int:
     p_ana.add_argument("--port", type=int, default=8000)
 
     # ---- ide ----
-    p_ide = sub.add_parser("ide", help="Open the LatticeMemory terminal IDE")
+    p_ide = sub.add_parser("ide", help="Open the LatticeMemory terminal IDE", add_help=False)
     p_ide.add_argument("ide_args", nargs=argparse.REMAINDER)
 
     # ---- dedup ----
