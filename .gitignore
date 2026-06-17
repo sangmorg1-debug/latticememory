@@ -17,3 +17,20 @@ benchmarks/results/
 scratch/
 snap_v*/
 pre_training_snapshot.json
+
+# Local-only — never upload
+private/
+COMPLETION_SUMMARY.md
+test_run_postchange.txt
+
+# Claude Code project config — contains local paths and session state
+.claude/
+
+# Benchmark run output files
+benchmarks/*.txt
+
+# Environment / secrets
+.env
+.env.*
+*.key
+secrets.json
