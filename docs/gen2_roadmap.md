@@ -363,6 +363,71 @@ Paraphrase cache benchmark: exact-match hits = **100%**, paraphrase hits = **0%*
 
 ---
 
+---
+
+## Research Paths (Next Candidates)
+
+These are not yet built but are grounded in existing code. Listed in rough value order.
+
+### 1. `lattice review` CLI — Review Workflow Automation
+
+`LatticeFlywheel.export_review_queue()` and `load_reviewed()` already exist, but no CLI wraps
+them. A `lattice review export` + `lattice review import` pair would let ops teams drive the
+full miss-to-cache feedback loop from the command line, with no code changes.
+
+**Effort:** Small (1 day). **Value:** Makes flywheel usable without writing Python.
+
+### 2. `lattice federated` CLI — Multi-Node Key Histogram
+
+`LatticeFlywheel.federated_key_histogram()` is implemented but not surfaced as a CLI command.
+A `lattice federated --logs node1.jsonl node2.jsonl ...` command would aggregate miss
+distributions across proxy replicas for capacity planning and threshold calibration at scale.
+
+**Effort:** Small (1 day). **Value:** Enables multi-instance deployments to share miss analytics.
+
+### 3. Network Transport for `AgentMemorySync`
+
+`AgentMemorySync` currently only works in-process (direct Python object references). To cross
+process or machine boundaries, a REST or WebSocket adapter is needed. The `share()` / `receive_document()`
+/ `sync_from_peer()` interface is already clean for this.
+
+**Approach:** `FastAPI` endpoint per agent; `sync_from_peer(peer)` becomes an HTTP GET to
+`http://agent-b/v1/keys`; `share(key)` becomes a POST to all registered peer URLs.
+
+**Effort:** Medium (2–3 days). **Value:** Unlocks real multi-process agent swarms (AutoGen, CrewAI).
+
+### 4. Encoder Drift Monitoring (Snapshot Comparison)
+
+`detect_drift()` in `LatticeFlywheel` tracks prompt-intent drift (same queries appearing more).
+A separate capability is needed to detect *encoder model drift* — when the same text produces
+different E8 keys after an encoder update, invalidating existing cache entries.
+
+**Approach:** Snapshot the E8 key set at deployment time. After an encoder update, re-key a
+random sample and report Hamming distances between old and new keys. If mean Hamming > threshold,
+flag for cache invalidation.
+
+**Effort:** Medium (2 days). **Value:** Prevents silent cache poisoning on encoder rollouts.
+
+### 5. WebSocket Streaming Proxy
+
+The current proxy supports SSE streaming for chat completions. WebSocket streaming (bi-directional,
+useful for tool-calling agents) is not yet implemented.
+
+**Effort:** Medium (2 days). **Value:** Unblocks WebSocket-based agent frameworks.
+
+### 6. Multi-Node Redis Cache Pool
+
+`LatticeRedisStore` (ships with `latticememory[redis]`) lets multiple proxy instances share a
+single Redis cache. The next step is a pool configuration that:
+
+- Shards tenant caches across multiple Redis nodes by namespace prefix
+- Runs `evict_expired()` as a background task (cron or Celery beat)
+
+**Effort:** Medium (2–3 days). **Infra requirement:** Redis Cluster or Sentinel; deferred until
+a production deployment validates the routing need.
+
+---
+
 ## Development Notes
 
 - **Python:** 3.11.9, Windows 11

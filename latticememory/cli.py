@@ -5,7 +5,12 @@ Commands
 lattice populate   Load Q&A pairs from CSV/JSON into a cache file.
 lattice inspect    Print cache statistics for an existing cache file.
 lattice gaps       Show top miss clusters from a flywheel log.
-lattice serve      Start the proxy (shorthand for uvicorn).
+lattice drift      Detect drifting intents from a flywheel miss log.
+lattice serve      Start the proxy server.
+lattice export     Export cache entries to a portable JSONL file.
+lattice import     Import cache entries from a JSONL export.
+lattice analytics  Fetch analytics from a running proxy.
+lattice dedup      Deduplicate texts in a file using E8 lattice hashing.
 
 Usage
 -----
@@ -16,7 +21,16 @@ Usage
 
     lattice gaps --log misses.jsonl --top 10
 
+    lattice drift --log misses.jsonl --window 604800 --min-delta 5
+
+    lattice export --cache cache.db --output export.jsonl
+    lattice import --input export.jsonl --cache cache.db
+
     lattice serve --key sk-... --cache cache.db --port 8000
+
+    lattice analytics --host localhost --port 8000
+
+    lattice dedup corpus.jsonl --text-col text --output corpus_deduped.jsonl
 """
 from __future__ import annotations
 
