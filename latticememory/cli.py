@@ -11,6 +11,7 @@ lattice export     Export cache entries to a portable JSONL file.
 lattice import     Import cache entries from a JSONL export.
 lattice analytics  Fetch analytics from a running proxy.
 lattice dedup      Deduplicate texts in a file using E8 lattice hashing.
+lattice ide        Open the LatticeMemory terminal IDE.
 
 Usage
 -----
@@ -31,6 +32,9 @@ Usage
     lattice analytics --host localhost --port 8000
 
     lattice dedup corpus.jsonl --text-col text --output corpus_deduped.jsonl
+
+    lattice ide
+    lattice ide chat "Summarize this cache"
 """
 from __future__ import annotations
 
@@ -618,6 +622,13 @@ def cmd_analytics(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_ide(args: argparse.Namespace) -> int:
+    """Open the LatticeMemory terminal IDE or run a one-shot IDE command."""
+    from latticememory.ide.cli import main as ide_main
+
+    return ide_main(args.ide_args)
+
+
 # ---------------------------------------------------------------------------
 # Main parser
 # ---------------------------------------------------------------------------
@@ -695,6 +706,10 @@ def main() -> int:
     p_ana.add_argument("--host", default="localhost")
     p_ana.add_argument("--port", type=int, default=8000)
 
+    # ---- ide ----
+    p_ide = sub.add_parser("ide", help="Open the LatticeMemory terminal IDE")
+    p_ide.add_argument("ide_args", nargs=argparse.REMAINDER)
+
     # ---- dedup ----
     p_ded = sub.add_parser("dedup", help="Deduplicate texts in a file using E8 lattice hashing")
     p_ded.add_argument("input", help="Input file (.txt, .json, .jsonl, .csv)")
@@ -713,6 +728,7 @@ def main() -> int:
         "import":    cmd_import,
         "analytics": cmd_analytics,
         "dedup":     cmd_dedup,
+        "ide":       cmd_ide,
     }
     return dispatch[args.command](args)
 
