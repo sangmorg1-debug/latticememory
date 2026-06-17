@@ -60,6 +60,8 @@ class LatticeLLMProxy:
         miss_log_path: str | None = None,
         # Management API — gate mutation endpoints behind this key (None = open)
         admin_key: str | None = None,
+        # Compliance reviewer key — can call /v1/compliance/validate but not admin mutations
+        reviewer_key: str | None = None,
         # Warm-start: load entries from a CSV/JSON/JSONL file at startup
         warm_path: str | None = None,
     ):
@@ -80,6 +82,8 @@ class LatticeLLMProxy:
 
         # Management API key (None = open, no auth)
         self.admin_key: str | None = admin_key
+        # Reviewer key: can approve compliance entries but cannot mutate/delete
+        self.reviewer_key: str | None = reviewer_key
 
         # Active learning flywheel (optional persistent miss log)
         self.flywheel: Any | None = None
@@ -373,6 +377,7 @@ class LatticeLLMProxy:
         app = FastAPI(title="LatticeMemory LLM Cache Proxy", version="0.1.0")
         app.state.proxy = self
         app.state.admin_key = getattr(self, "admin_key", None)
+        app.state.reviewer_key = getattr(self, "reviewer_key", None)
 
         @app.get("/health")
         async def health(request: Request) -> dict[str, Any]:
@@ -628,6 +633,7 @@ class LatticeLLMProxy:
 
         @app.post("/v1/compliance/validate")
         async def validate_entry(request: Request) -> dict[str, Any]:
+            _check_reviewer(request)
             proxy: LatticeLLMProxy = request.app.state.proxy
             if not proxy.compliance_mode:
                 raise HTTPException(
@@ -707,6 +713,42 @@ class LatticeLLMProxy:
                 "total_events": len(proxy.audit_events),
             }
 
+        @app.get("/v1/compliance/pending")
+        async def list_pending_entries(
+            request: Request,
+            limit: int = 100,
+            offset: int = 0,
+        ) -> dict[str, Any]:
+            """List cache entries awaiting compliance validation.
+
+            Requires X-Lattice-Admin-Key or X-Lattice-Reviewer-Key when keys are configured.
+            Returns only entries where compliance_validated is False or absent.
+            """
+            _check_reviewer(request)
+            proxy: LatticeLLMProxy = request.app.state.proxy
+            if not proxy.compliance_mode:
+                raise HTTPException(status_code=400, detail="Compliance mode is disabled on this proxy")
+            pending = [
+                e for e in proxy.cache._entries.values()
+                if not e.is_expired() and not e.metadata.get("compliance_validated", False)
+            ]
+            page = pending[offset: offset + limit]
+            return {
+                "total_pending": len(pending),
+                "offset": offset,
+                "limit": limit,
+                "entries": [
+                    {
+                        "cache_id":   e.cache_id,
+                        "prompt":     e.prompt,
+                        "e8_key":     e.lattice_key.hex() if e.lattice_key else None,
+                        "created_at": e.created_at,
+                        "preview":    proxy._extract_response_text(e.value)[:200] if e.value else None,
+                    }
+                    for e in page
+                ],
+            }
+
         # ------------------------------------------------------------------
         # /v1/cache — live cache management (read-only by default;
         # mutations require X-Lattice-Admin-Key header if admin_key is set)
@@ -718,6 +760,17 @@ class LatticeLLMProxy:
                 provided = request.headers.get("X-Lattice-Admin-Key", "")
                 if provided != admin_key:
                     raise HTTPException(status_code=403, detail="Invalid or missing X-Lattice-Admin-Key")
+
+        def _check_reviewer(request: Request) -> None:
+            """Accept either the admin key or the reviewer key for compliance endpoints."""
+            admin_key = app.state.admin_key if hasattr(app.state, "admin_key") else None
+            reviewer_key = app.state.reviewer_key if hasattr(app.state, "reviewer_key") else None
+            if admin_key is None and reviewer_key is None:
+                return
+            provided = request.headers.get("X-Lattice-Admin-Key", "") or request.headers.get("X-Lattice-Reviewer-Key", "")
+            if provided and ((admin_key and provided == admin_key) or (reviewer_key and provided == reviewer_key)):
+                return
+            raise HTTPException(status_code=403, detail="Invalid or missing X-Lattice-Admin-Key or X-Lattice-Reviewer-Key")
 
         @app.get("/v1/cache")
         async def list_cache_entries(

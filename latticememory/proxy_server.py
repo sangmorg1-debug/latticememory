@@ -23,6 +23,7 @@ calibration_data_path = os.getenv("LATTICE_CALIBRATION_DATA_PATH", None)
 miss_log_path = os.getenv("LATTICE_MISS_LOG_PATH", None)
 warm_path     = os.getenv("LATTICE_WARM_PATH", None)
 admin_key     = os.getenv("LATTICE_ADMIN_KEY", None)
+reviewer_key  = os.getenv("LATTICE_REVIEWER_KEY", None)
 
 import warnings
 
@@ -54,6 +55,7 @@ proxy = LatticeLLMProxy(
     miss_log_path=miss_log_path,
     warm_path=warm_path,
     admin_key=admin_key,
+    reviewer_key=reviewer_key,
 )
 
 # Create FastAPI app

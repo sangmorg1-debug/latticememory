@@ -750,3 +750,93 @@ def test_proxy_server_health_endpoint_responds(monkeypatch):
     data = response.json()
     assert data["status"] == "healthy"
     assert data["service"] == "latticememory-proxy"
+
+
+# ---------------------------------------------------------------------------
+# Compliance: reviewer key and pending queue
+# ---------------------------------------------------------------------------
+
+def _make_compliance_proxy(*, admin_key=None, reviewer_key=None):
+    upstream = FakeUpstream()
+    proxy = LatticeLLMProxy(
+        upstream_url="https://example.test/v1/chat/completions",
+        upstream_api_key="test-key",
+        encoder=CanonicalPromptEncoder(384),
+        d_model=384,
+        upstream_client=upstream,
+        compliance_mode=True,
+        validation_required=True,
+        admin_key=admin_key,
+        reviewer_key=reviewer_key,
+    )
+    return proxy, TestClient(proxy.create_app())
+
+
+def test_compliance_pending_lists_unvalidated_entries():
+    proxy, client = _make_compliance_proxy()
+    # Populate one unvalidated entry
+    client.post("/v1/chat/completions", json=_request("What is gravity?"))
+    res = client.get("/v1/compliance/pending")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["total_pending"] == 1
+    assert data["entries"][0]["prompt"] == "What is gravity?"
+    assert data["entries"][0]["preview"] is not None
+
+
+def test_compliance_pending_empties_after_validation():
+    proxy, client = _make_compliance_proxy()
+    client.post("/v1/chat/completions", json=_request("What is gravity?"))
+    assert client.get("/v1/compliance/pending").json()["total_pending"] == 1
+    client.post("/v1/compliance/validate", json={"prompt": "What is gravity?"})
+    assert client.get("/v1/compliance/pending").json()["total_pending"] == 0
+
+
+def test_compliance_reviewer_key_allows_validate():
+    proxy, client = _make_compliance_proxy(admin_key="admin-secret", reviewer_key="reviewer-secret")
+    client.post("/v1/chat/completions", json=_request("What is photosynthesis?"))
+    # Reviewer key accepted for /validate
+    res = client.post(
+        "/v1/compliance/validate",
+        json={"prompt": "What is photosynthesis?"},
+        headers={"X-Lattice-Reviewer-Key": "reviewer-secret"},
+    )
+    assert res.status_code == 200
+    assert res.json()["status"] == "approved"
+
+
+def test_compliance_reviewer_key_rejected_for_admin_mutation():
+    proxy, client = _make_compliance_proxy(admin_key="admin-secret", reviewer_key="reviewer-secret")
+    # Reviewer key must NOT allow cache deletion (admin-only)
+    client.post("/v1/chat/completions", json=_request("What is a quasar?"))
+    entry_id = list(proxy.cache._entries.keys())[0]
+    res = client.delete(
+        f"/v1/cache/{entry_id}",
+        headers={"X-Lattice-Reviewer-Key": "reviewer-secret"},
+    )
+    assert res.status_code == 403
+
+
+def test_compliance_pending_requires_compliance_mode():
+    proxy = LatticeLLMProxy(
+        upstream_url="https://example.test/v1/chat/completions",
+        upstream_api_key="test-key",
+        encoder=CanonicalPromptEncoder(384),
+        d_model=384,
+        upstream_client=FakeUpstream(),
+        compliance_mode=False,
+    )
+    client = TestClient(proxy.create_app())
+    res = client.get("/v1/compliance/pending")
+    assert res.status_code == 400
+
+
+def test_compliance_reviewer_key_wrong_key_rejected():
+    proxy, client = _make_compliance_proxy(admin_key="admin-secret", reviewer_key="reviewer-secret")
+    client.post("/v1/chat/completions", json=_request("What is a neutron star?"))
+    res = client.post(
+        "/v1/compliance/validate",
+        json={"prompt": "What is a neutron star?"},
+        headers={"X-Lattice-Reviewer-Key": "wrong-key"},
+    )
+    assert res.status_code == 403
