@@ -523,6 +523,68 @@ def cmd_dedup(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
+# drift
+# ---------------------------------------------------------------------------
+
+def cmd_drift(args: argparse.Namespace) -> int:
+    """Show intents whose miss rate is increasing (query drift detection)."""
+    log_path = Path(args.log)
+    if not log_path.exists():
+        print(f"ERROR: log file not found: {log_path}")
+        return 1
+
+    from latticememory.flywheel import LatticeFlywheel
+
+    fw = LatticeFlywheel(log_path, cluster_threshold=args.threshold)
+    drifting = fw.detect_drift(
+        window_seconds=args.window,
+        min_delta=args.min_delta,
+        min_cluster_size=args.min_cluster_size,
+    )
+
+    stats = fw.stats()
+    print(f"\nFlywheel log : {log_path}")
+    print(f"  Total misses   : {stats['total_misses']}")
+    print(f"  Unique queries : {stats['unique_questions']}")
+    print(f"  Window (days)  : {args.window / 86400:.1f}")
+
+    if not drifting:
+        print(f"\n  No drifting intents detected (min_delta={args.min_delta}, "
+              f"min_cluster_size={args.min_cluster_size})")
+        recommend = fw.should_finetune(
+            min_drifting_clusters=args.min_clusters,
+            min_delta=args.min_delta,
+            window_seconds=args.window,
+            min_cluster_size=args.min_cluster_size,
+        )
+        print(f"  Recommend fine-tune : {'YES' if recommend else 'no'}")
+        return 0
+
+    print(f"\n  Drifting intents ({len(drifting)}):\n")
+    print(f"  {'delta':>6}  {'recent':>7}  {'prev':>7}  representative")
+    print(f"  {'-'*6}  {'-'*7}  {'-'*7}  {'-'*40}")
+    for row in drifting:
+        rep = row["representative"][:60]
+        print(f"  {row['delta']:>+6}  {row['recent']:>7}  {row['previous']:>7}  {rep!r}")
+
+    recommend = fw.should_finetune(
+        min_drifting_clusters=args.min_clusters,
+        min_delta=args.min_delta,
+        window_seconds=args.window,
+        min_cluster_size=args.min_cluster_size,
+    )
+    print(f"\n  Recommend fine-tune : {'YES — run `lattice finetune`' if recommend else 'no (below threshold)'}")
+
+    if args.export:
+        out = Path(args.export)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(drifting, indent=2, ensure_ascii=False), encoding="utf-8")
+        print(f"  Drift report exported: {args.export}")
+
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # analytics
 # ---------------------------------------------------------------------------
 
@@ -604,6 +666,16 @@ def main() -> int:
     p_imp.add_argument("--overwrite",       action="store_true", help="Overwrite duplicate entries")
     p_imp.add_argument("--include-expired", action="store_true", help="Import TTL-expired entries too")
 
+    # ---- drift ----
+    p_drift = sub.add_parser("drift", help="Detect drifting intents from a flywheel miss log")
+    p_drift.add_argument("--log",              required=True,               help="Flywheel JSONL miss log")
+    p_drift.add_argument("--window",           type=float, default=7*86400, help="Half-window in seconds (default: 7 days)")
+    p_drift.add_argument("--min-delta",        type=int,   default=5,       help="Min count increase to flag a cluster as drifting")
+    p_drift.add_argument("--min-cluster-size", type=int,   default=3,       help="Min total cluster size to consider")
+    p_drift.add_argument("--min-clusters",     type=int,   default=3,       help="Min drifting clusters to recommend fine-tuning")
+    p_drift.add_argument("--threshold",        type=int,   default=25,      help="Hamming cluster threshold (blocks)")
+    p_drift.add_argument("--export",           default=None,                help="Export drift report to this JSON path")
+
     # ---- analytics ----
     p_ana = sub.add_parser("analytics", help="Fetch analytics from a running proxy")
     p_ana.add_argument("--host", default="localhost")
@@ -621,6 +693,7 @@ def main() -> int:
         "populate":  cmd_populate,
         "inspect":   cmd_inspect,
         "gaps":      cmd_gaps,
+        "drift":     cmd_drift,
         "serve":     cmd_serve,
         "export":    cmd_export,
         "import":    cmd_import,

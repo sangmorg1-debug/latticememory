@@ -579,6 +579,38 @@ class LatticeFlywheel:
 
         return sorted(drifting, key=lambda r: -r["delta"])
 
+    def should_finetune(
+        self,
+        *,
+        min_drifting_clusters: int = 3,
+        min_delta: int = 5,
+        window_seconds: float = 7 * 24 * 3600,
+        min_cluster_size: int = 3,
+    ) -> bool:
+        """Return True when the miss log contains enough drift to justify retraining.
+
+        A retraining is justified when at least ``min_drifting_clusters``
+        intent clusters have grown by ``min_delta`` or more in the recent
+        half-window compared to the older half-window.
+
+        Parameters
+        ----------
+        min_drifting_clusters:
+            Number of drifting clusters required to recommend fine-tuning.
+        min_delta:
+            Minimum per-cluster count increase to count as drifting.
+        window_seconds:
+            Half-window for drift comparison (see ``detect_drift``).
+        min_cluster_size:
+            Minimum total cluster size (both halves) to consider.
+        """
+        drifting = self.detect_drift(
+            window_seconds=window_seconds,
+            min_delta=min_delta,
+            min_cluster_size=min_cluster_size,
+        )
+        return len(drifting) >= min_drifting_clusters
+
     def federated_key_histogram(
         self,
         window_seconds: float | None = None,

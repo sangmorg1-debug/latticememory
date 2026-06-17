@@ -49,7 +49,7 @@ natural Hamming distance of 88–106 out of 128 blocks, regardless of training. 
 structural property of the E8 Voronoi tessellation at 1024D, not a solvable bug.
 
 Everything in this roadmap that claims a product capability has been built and passes the
-407-test suite as of this date. Capabilities not yet built are marked explicitly.
+test suite as of this date. Capabilities not yet built are marked explicitly.
 
 ---
 
@@ -131,11 +131,14 @@ window for continuous streams.
 - `LatticeStreamDedup` — in-process sliding window dedup with configurable TTL
 - `LatticeSqliteStore` persistence — key set survives restart
 
+**What is actually built (updated 2026-06-17):**
+
+- `lattice dedup <file>` CLI (`cmd_dedup` in `cli.py`) — `.txt`, `.json`, `.jsonl`, `.csv` input; outputs deduped file; reports compression ratio ✓
+
 **What is not yet built:**
 
-- Kafka consumer adapter (streaming pipeline integration)
-- Redis-backed distributed key store for multi-process dedup
-- CLI `lattice dedup <file>` — no command-line interface for the dedup workflow
+- Kafka consumer adapter (streaming pipeline integration — requires broker to validate; deferred)
+- Redis-backed distributed key store for multi-process dedup (requires Redis infra to validate; deferred)
 
 **Known limitation:** Dedup works on the symmetric assumption. Two articles covering the
 same event but written from opposite angles (e.g., "Fed raises rates" vs "Markets respond
@@ -192,11 +195,15 @@ in a swarm share only the keys they are missing — no embedding transfer, just 
 - `make_autogen_sync_tools()` — AutoGen-compatible tool definitions wrapping `AgentMemorySync`
 - `LangGraphLatticeAdapter` — LangGraph node that reads/writes a shared `LatticeIndex`
 
+**What is actually built (updated 2026-06-17):**
+
+- `tests/test_agent_sync.py` — full coverage of `make_autogen_sync_tools` and `LangGraphLatticeAdapter` ✓
+- `examples/agent_swarm_demo.py` (Gate 4) — two agents sharing memory via pull-sync and push-broadcast; runs without model download ✓
+
 **What is not yet built:**
 
-- End-to-end demo with a real AutoGen or LangGraph agent running
 - Network transport for `AgentMemorySync` (currently in-process only)
-- Tests for `make_autogen_sync_tools` and `LangGraphLatticeAdapter`
+- End-to-end demo with a real AutoGen or LangGraph orchestrator making LLM calls
 
 **Known limitation:** The sync protocol assumes all agents use the same encoder model.
 Mixed encoder fleets will produce different E8 keys for the same content and cannot sync
@@ -224,12 +231,39 @@ cover yet.
 - `federated_key_histogram()` — key distribution for multi-node deployments
 - `finetune()` — training loop stub (wires to `SnapTrainer`; requires labeled Q&A pairs)
 
+**What is actually built (updated 2026-06-17):**
+
+- `should_finetune(min_drifting_clusters, min_delta, ...) -> bool` — returns True when enough drifting clusters exceed threshold; testable without a training run ✓
+- `lattice drift` CLI (`cmd_drift` in `cli.py`) — prints drift table, labels recommend-finetune, optionally exports JSON report ✓
+
 **What is not yet built:**
 
-- UI or CLI to review drift alerts and add new Q&A pairs from the miss log
-- Automated retraining trigger when `detect_drift()` returns results
+- UI for the reviewer queue (drift alerts in a browser)
+- Automated background retraining loop (requires training infra)
 
 **How it ships:** As a flag on the proxy (`miss_log_path=...`). Not sold separately.
+
+---
+
+### 7. Vertical Applications (9 built, 2026-06-17)
+
+**Fit: high for narrow domains. Built: complete.**
+
+All verticals share the same `RFSnapSemanticCache` core and ship in `latticememory.verticals`.
+
+| Vertical | Class | Key Capability |
+| --- | --- | --- |
+| SOC Monitor | `LatticeSOCMonitor` | O(1) alert dedup for SIEM event streams |
+| Ticket Analyzer | `LatticeTicketAnalyzer` | Intent-based ticket routing + dedup |
+| Content Moderator | `LatticeContentModerator` | Semantic near-miss content policy |
+| Clause Coder | `LatticeClauseCoder` | Legal clause classification |
+| Edge Memory | `LatticeEdgeMemory` | On-device personalization without cloud round-trip |
+| Private Sync | `LatticePrivateSync` | Federated key sync, no raw text transfer |
+| **Prompt Firewall** | `LatticePromptFirewall` | Semantic injection/jailbreak detection (14 default patterns) |
+| **Semantic Rate Limiter** | `LatticeSemanticRateLimiter` | Per-intent sliding-window rate limiting |
+| **Training Cleaner** | `LatticeTrainingCleaner` | O(N) near-duplicate removal for LLM training sets |
+
+The last three (`LatticePromptFirewall`, `LatticeSemanticRateLimiter`, `LatticeTrainingCleaner`) were shipped 2026-06-17.
 
 ---
 
@@ -251,12 +285,13 @@ These appear in the codebase but are not production-ready claims:
 
 | Priority | Product | Status | What's blocking |
 | --- | --- | --- | --- |
-| **1** | LLM Cache Proxy | Code complete, 407 tests pass | `twine upload`, Docker Hub push |
+| **1** | LLM Cache Proxy | Code complete, 482 tests pass | `twine upload`, Docker Hub push |
 | **2** | Multi-Tenant Cache | Code complete | Same as #1 |
-| **3** | Semantic Dedup | Core complete | Kafka adapter |
+| **3** | Semantic Dedup | Core + CLI complete | Kafka adapter (infra-dependent, deferred) |
 | **4** | Compliance Cache | **Complete** (reviewer key + pending queue + HMAC chain) | Same as #1 |
-| **5** | Agent Memory | Core + adapters exist | End-to-end demo, network transport |
-| **6** | Flywheel | Complete as proxy add-on | Review UI |
+| **5** | Agent Memory | Core + adapters + swarm demo complete | Network transport |
+| **6** | Flywheel | Complete + `should_finetune()` + `lattice drift` CLI | Review UI |
+| **7** | Verticals (9 total) | Complete (SOC, tickets, content mod, clause, edge, private sync, firewall, rate limiter, training cleaner) | Same as #1 |
 
 ---
 
@@ -295,22 +330,22 @@ Paraphrase cache benchmark: exact-match hits = **100%**, paraphrase hits = **0%*
 
 ### Gate 1 — ship the proxy (highest value)
 
-1. Run `validate_hamming_thresholds.py` — must pass before this step
-1. `python -m build && python -m twine upload dist/*` — publish v0.2.0 to PyPI
+1. ~~Run `validate_hamming_thresholds.py`~~ — **validated 2026-06-17**: proxy t=70 → 0% FP; router t=111 → 84% recall / 4.5% FP on BANKING77 (calibrate per domain)
+1. `python -m build && python -m twine upload dist/*` — publish v0.2.0 to PyPI (user-run, outside repo)
 1. `docker buildx build --push -t latticememory/proxy:latest .` — Docker Hub
-1. Write `examples/quickstart_proxy.py` — 10-line demo showing cache hit with curl
+1. ~~Write `examples/quickstart_proxy.py`~~ — **shipped**: three-section demo (exact hit, HammingRouter, proxy server instructions)
 
-### Gate 2 — dedup shippable standalone
+### Gate 2 — dedup shippable standalone (DONE 2026-06-17)
 
-1. Add `lattice dedup <file>` CLI command (wraps `LatticeDataPipeline.deduplicate_text`)
+1. ~~Add `lattice dedup <file>` CLI command~~ — **shipped**: `cmd_dedup` in `cli.py`, supports `.txt`, `.json`, `.jsonl`, `.csv`
 
 ### Gate 3 — compliance cache (DONE 2026-06-17)
 
 1. ~~Add `POST /validate/{cache_id}` to proxy~~ — **shipped**: `POST /v1/compliance/validate/{cache_id}` with HMAC audit chain, `GET /v1/compliance/pending` reviewer queue, `LATTICE_REVIEWER_KEY` role separation
 
-### Gate 4 — agent memory demo
+### Gate 4 — agent memory demo (DONE 2026-06-17)
 
-1. Write `examples/agent_swarm_demo.py` — two agents sharing memory over `AgentMemorySync`
+1. ~~Write `examples/agent_swarm_demo.py`~~ — **shipped**: pull-sync + push-broadcast demo, FakeEncoder (no model download), 4+1 fact scenario, all assertions pass
 
 ---
 
@@ -331,7 +366,7 @@ Paraphrase cache benchmark: exact-match hits = **100%**, paraphrase hits = **0%*
 ## Development Notes
 
 - **Python:** 3.11.9, Windows 11
-- **Tests:** `python -m pytest tests/ -q` → 407 pass (as of 2026-06-17)
+- **Tests:** `python -m pytest tests/ -q` → 482 pass (as of 2026-06-17)
 - **Encoder model:** `dfrokido/bge-large-e8-snap` (HuggingFace) — 1024D, produces E8 keys
 - **Key size:** 128 bytes (1024D) / 48 bytes (384D)
 - **Compression:** 32× vs float32 on 1024D (key only)
