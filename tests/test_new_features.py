@@ -240,8 +240,13 @@ class TestCacheRestAPI:
     def test_admin_key_gates_mutations(self):
         client, _ = self._client(admin_key="secret-key")
 
-        # Read-only endpoints work without key
+        # Read endpoints also require the key once admin_key is configured —
+        # cached prompts/responses are sensitive and must not be readable by
+        # anyone who can merely reach the proxy.
         r = client.get("/v1/cache")
+        assert r.status_code == 403
+
+        r = client.get("/v1/cache", headers={"X-Lattice-Admin-Key": "secret-key"})
         assert r.status_code == 200
 
         # Mutations without key are 403

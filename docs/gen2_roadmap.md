@@ -285,7 +285,7 @@ These appear in the codebase but are not production-ready claims:
 
 | Priority | Product | Status | What's blocking |
 | --- | --- | --- | --- |
-| **1** | LLM Cache Proxy | Code complete, 482 tests pass | `twine upload`, Docker Hub push |
+| **1** | LLM Cache Proxy | Code complete, 489 tests pass | `twine upload`, Docker Hub push |
 | **2** | Multi-Tenant Cache | Code complete | Same as #1 |
 | **3** | Semantic Dedup | Core + CLI complete | Kafka adapter (infra-dependent, deferred) |
 | **4** | Compliance Cache | **Complete** (reviewer key + pending queue + HMAC chain) | Same as #1 |
@@ -431,7 +431,7 @@ a production deployment validates the routing need.
 ## Development Notes
 
 - **Python:** 3.11.9, Windows 11
-- **Tests:** `python -m pytest tests/ -q` → 482 pass (as of 2026-06-17)
+- **Tests:** `python -m pytest tests/ -q` → 489 pass (as of 2026-06-17)
 - **Encoder model:** `dfrokido/bge-large-e8-snap` (HuggingFace) — 1024D, produces E8 keys
 - **Key size:** 128 bytes (1024D) / 48 bytes (384D)
 - **Compression:** 32× vs float32 on 1024D (key only)

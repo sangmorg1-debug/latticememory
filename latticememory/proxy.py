@@ -680,6 +680,7 @@ class LatticeLLMProxy:
 
         @app.get("/v1/compliance/audit-log")
         async def get_audit_log(request: Request) -> dict[str, Any]:
+            _check_reviewer(request)
             proxy: LatticeLLMProxy = request.app.state.proxy
             if not proxy.compliance_mode:
                 raise HTTPException(
@@ -750,8 +751,8 @@ class LatticeLLMProxy:
             }
 
         # ------------------------------------------------------------------
-        # /v1/cache — live cache management (read-only by default;
-        # mutations require X-Lattice-Admin-Key header if admin_key is set)
+        # /v1/cache — live cache management; all routes (reads and
+        # mutations) require X-Lattice-Admin-Key header if admin_key is set
         # ------------------------------------------------------------------
 
         def _check_admin(request: Request) -> None:
@@ -779,7 +780,8 @@ class LatticeLLMProxy:
             offset: int = 0,
             include_expired: bool = False,
         ) -> dict[str, Any]:
-            """List all cache entries (paginated). Expired entries are excluded by default."""
+            """List all cache entries (paginated). Requires admin key if configured."""
+            _check_admin(request)
             proxy: LatticeLLMProxy = request.app.state.proxy
             all_entries = list(proxy.cache._entries.values())
             if not include_expired:
@@ -806,7 +808,8 @@ class LatticeLLMProxy:
 
         @app.get("/v1/cache/{cache_id}")
         async def get_cache_entry(cache_id: str, request: Request) -> dict[str, Any]:
-            """Fetch a single cache entry by ID."""
+            """Fetch a single cache entry by ID. Requires admin key if configured."""
+            _check_admin(request)
             proxy: LatticeLLMProxy = request.app.state.proxy
             entry = proxy.cache._entries.get(cache_id)
             if entry is None:

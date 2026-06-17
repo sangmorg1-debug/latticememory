@@ -840,3 +840,62 @@ def test_compliance_reviewer_key_wrong_key_rejected():
         headers={"X-Lattice-Reviewer-Key": "wrong-key"},
     )
     assert res.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Auth: audit-log and cache GET endpoints must require a key when configured
+# ---------------------------------------------------------------------------
+
+def test_audit_log_requires_key_when_configured():
+    proxy, client = _make_compliance_proxy(admin_key="admin-secret", reviewer_key="reviewer-secret")
+    client.post("/v1/chat/completions", json=_request("What is dark matter?"))
+    res = client.get("/v1/compliance/audit-log")
+    assert res.status_code == 403
+
+
+def test_audit_log_accessible_with_reviewer_key():
+    proxy, client = _make_compliance_proxy(admin_key="admin-secret", reviewer_key="reviewer-secret")
+    client.post("/v1/chat/completions", json=_request("What is dark matter?"))
+    res = client.get(
+        "/v1/compliance/audit-log",
+        headers={"X-Lattice-Reviewer-Key": "reviewer-secret"},
+    )
+    assert res.status_code == 200
+    assert res.json()["total_events"] >= 1
+
+
+def test_audit_log_open_when_no_keys_configured():
+    proxy, client = _make_compliance_proxy()
+    client.post("/v1/chat/completions", json=_request("What is dark matter?"))
+    res = client.get("/v1/compliance/audit-log")
+    assert res.status_code == 200
+
+
+def test_cache_list_requires_admin_key_when_configured():
+    proxy, client = _make_compliance_proxy(admin_key="admin-secret")
+    client.post("/v1/chat/completions", json=_request("What is entropy?"))
+    res = client.get("/v1/cache")
+    assert res.status_code == 403
+
+
+def test_cache_get_entry_requires_admin_key_when_configured():
+    proxy, client = _make_compliance_proxy(admin_key="admin-secret")
+    client.post("/v1/chat/completions", json=_request("What is entropy?"))
+    entry_id = list(proxy.cache._entries.keys())[0]
+    res = client.get(f"/v1/cache/{entry_id}")
+    assert res.status_code == 403
+
+
+def test_cache_list_accessible_with_admin_key():
+    proxy, client = _make_compliance_proxy(admin_key="admin-secret")
+    client.post("/v1/chat/completions", json=_request("What is entropy?"))
+    res = client.get("/v1/cache", headers={"X-Lattice-Admin-Key": "admin-secret"})
+    assert res.status_code == 200
+    assert res.json()["total"] >= 1
+
+
+def test_cache_list_open_when_no_admin_key_configured():
+    proxy, client = _make_compliance_proxy()
+    client.post("/v1/chat/completions", json=_request("What is entropy?"))
+    res = client.get("/v1/cache")
+    assert res.status_code == 200
