@@ -50,6 +50,21 @@ def test_cli_verticals_list(capsys):
     assert "LatticePromptFirewall" in capsys.readouterr().out
 
 
+def test_cache_inspect_delegates_to_existing_cli(monkeypatch):
+    captured = {}
+
+    def fake_inspect(args):
+        captured["cache"] = args.cache
+        captured["verbose"] = args.verbose
+        captured["sample"] = args.sample
+        return 0
+
+    monkeypatch.setattr("latticememory.ide.cli.cmd_inspect", fake_inspect)
+
+    assert ide_cli.main(["cache", "inspect", "--cache", "helpdesk.db", "--verbose", "--sample", "2"]) == 0
+    assert captured == {"cache": "helpdesk.db", "verbose": True, "sample": 2}
+
+
 def test_interactive_loop_dispatches_single_command(monkeypatch, capsys):
     commands = iter(["verticals list", "exit"])
     monkeypatch.setattr("builtins.input", lambda prompt: next(commands))

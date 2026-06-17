@@ -6,6 +6,8 @@ import shlex
 import sys
 from pathlib import Path
 
+from latticememory.cli import cmd_export, cmd_import, cmd_inspect
+
 from .config import IdeConfig, load_config, provider_from_env, save_config
 from .lattice_ops import list_verticals, proxy_analytics, proxy_doctor
 from .providers import ProviderError, chat_completion
@@ -29,6 +31,21 @@ def build_parser() -> argparse.ArgumentParser:
 
     chat = sub.add_parser("chat", help="Send a BYOK AI chat message")
     chat.add_argument("prompt")
+
+    cache = sub.add_parser("cache", help="Cache operations")
+    cache_sub = cache.add_subparsers(dest="cache_command", required=True)
+    inspect_p = cache_sub.add_parser("inspect", help="Inspect a SQLite cache")
+    inspect_p.add_argument("--cache", required=True)
+    inspect_p.add_argument("--verbose", action="store_true")
+    inspect_p.add_argument("--sample", type=int, default=0)
+    export_p = cache_sub.add_parser("export", help="Export cache entries")
+    export_p.add_argument("--cache", required=True)
+    export_p.add_argument("--output", required=True)
+    import_p = cache_sub.add_parser("import", help="Import cache entries")
+    import_p.add_argument("--input", required=True)
+    import_p.add_argument("--cache", required=True)
+    import_p.add_argument("--overwrite", action="store_true")
+    import_p.add_argument("--include-expired", action="store_true")
 
     proxy = sub.add_parser("proxy", help="Proxy diagnostics")
     proxy_sub = proxy.add_subparsers(dest="proxy_command", required=True)
@@ -99,6 +116,8 @@ def dispatch(args: argparse.Namespace) -> int:
             cfg = provider_from_env(load_config())
             print(chat_completion(cfg, args.prompt))
             return 0
+        if args.command == "cache":
+            return _cache(args)
         if args.command == "proxy":
             if args.proxy_command == "doctor":
                 data = proxy_doctor(host=args.host, port=args.port, admin_key=args.admin_key)
@@ -117,6 +136,16 @@ def dispatch(args: argparse.Namespace) -> int:
         return 1
     build_parser().print_help()
     return 0
+
+
+def _cache(args: argparse.Namespace) -> int:
+    if args.cache_command == "inspect":
+        return cmd_inspect(args)
+    if args.cache_command == "export":
+        return cmd_export(args)
+    if args.cache_command == "import":
+        return cmd_import(args)
+    return 1
 
 
 def _provider(args: argparse.Namespace) -> int:
