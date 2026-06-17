@@ -433,11 +433,11 @@ patch_cache_with_redis(cache, redis_url="redis://localhost:6379", namespace="hel
 
 ## Test Suite
 
-491 tests, all passing:
+508 tests, all passing:
 
 ```bash
 python -m pytest tests/ -q
-# 491 passed in ~70s
+# 508 passed in ~70s
 ```
 
 ---

@@ -273,9 +273,9 @@ These appear in the codebase but are not production-ready claims:
 
 | Capability | Reality |
 | --- | --- |
-| Cross-modal alignment (image↔text E8 key match) | Demo artifact — `FakeEncoder` with identical text prefixes, 4-pair overfit. Not validated with real CLIP embeddings. |
-| Cross-model Semantic DNS (MiniLM↔BGE key parity) | Demo artifact — synthetic embeddings from a shared latent space. Real encoder families are not linearly related. |
-| Asymmetric QA retrieval (question→passage via E8) | **Experimentally confirmed infeasible (2026-06-10).** DPR (the best pretrained QA encoder, 78% recall@10 on MS-MARCO) produces mean Hamming 71/96 blocks on matched pairs vs 90 random baseline. Min Hamming across 200 matched pairs: 49. Zero pairs within 30 blocks. Full fine-tuning experiments (2k examples, 15 epochs, multiple loss configs) all ended in collapse or oscillation — never producing useful routing. E8 routing requires matched pairs within ~4 blocks; the QA geometry places them ~71 blocks apart regardless of training. |
+| Cross-modal alignment (image↔text, shape↔text E8 key match) | **Experimentally confirmed infeasible, twice, on real data (2026-06-17 audit + follow-up test).** Real CLIP ViT-B/32 image↔text (200 real image-caption pairs): mean Hamming 61.81/64 blocks (~97% mismatch), 0% exact/beam-R10 hit rate, 0% E8 retrieval recall@1 vs. 49% float-cosine baseline. Real OpenShape PointBERT-ViT-L shape↔text (200 real Cap3D pairs, same method): mean Hamming 95.14/96 (~99%), 0% exact/beam-R10 hit rate, same-pair float cosine only 0.106 (looser than native CLIP alignment), E8 retrieval recall@1 2.0% vs. 11.5% float-cosine baseline. Both modalities: the float embeddings aren't tightly coupled enough across modalities for Hamming-distance routing regardless of which encoder pairing is used. The in-package `examples/multimodal_alignment_demo.py` (`FakeEncoder`, 4-pair overfit) remains a separate, weaker, non-representative demo — the real-data results above are the load-bearing finding. |
+| Cross-model Semantic DNS (MiniLM↔BGE key parity) | Demo artifact — synthetic embeddings from a shared latent space. Real encoder families are not linearly related. (Distinct from cross-modal above: this is two *encoders* of the same modality, not two modalities.) |
+| Asymmetric QA retrieval (question→passage via E8) | **Exact/near-address O(1) routing confirmed infeasible; Hamming-as-coarse-prefilter is not.** The previously-cited DPR-baseline numbers (71/96 mean Hamming, min 49, 2k-example fine-tuning) could not be traced to any script or saved result in this repo or its parent monorepo and should be treated as unsourced. A real, saved experiment does exist (`e8-Project/latticememory_open_retrieval_msmarco_1k_cosine/rfsnap_open_retrieval.json`): 1000 real MS-MARCO docs, 200 real queries, `e8_bge_large_snaptrained` — Hamming pre-filter (pool multiplier=10) → cosine rerank gets 63.5% top-1, 99% recall@10. So Hamming distance does carry real coarse signal for asymmetric QA when used as a *candidate-pool filter feeding a reranker* — it just doesn't work as an *exact/near-address lookup* (the original product claim), which needs matched pairs within ~4 blocks and QA pairs structurally don't land there. |
 | Hallucination grounding signal | Architecture exists in concept, not implemented or validated. |
 | Encoder drift monitoring (snapshot compare) | `detect_drift()` in the flywheel is for prompt intent drift, not encoder model drift. Snapshot comparison not built. |
 
@@ -285,7 +285,7 @@ These appear in the codebase but are not production-ready claims:
 
 | Priority | Product | Status | What's blocking |
 | --- | --- | --- | --- |
-| **1** | LLM Cache Proxy | Code complete, 489 tests pass | `twine upload`, Docker Hub push |
+| **1** | LLM Cache Proxy | Code complete, 508 tests pass | `twine upload`, Docker Hub push |
 | **2** | Multi-Tenant Cache | Code complete | Same as #1 |
 | **3** | Semantic Dedup | Core + CLI complete | Kafka adapter (infra-dependent, deferred) |
 | **4** | Compliance Cache | **Complete** (reviewer key + pending queue + HMAC chain) | Same as #1 |
@@ -431,7 +431,7 @@ a production deployment validates the routing need.
 ## Development Notes
 
 - **Python:** 3.11.9, Windows 11
-- **Tests:** `python -m pytest tests/ -q` → 489 pass (as of 2026-06-17)
+- **Tests:** `python -m pytest tests/ -q` → 508 pass (as of 2026-06-17)
 - **Encoder model:** `dfrokido/bge-large-e8-snap` (HuggingFace) — 1024D, produces E8 keys
 - **Key size:** 128 bytes (1024D) / 48 bytes (384D)
 - **Compression:** 32× vs float32 on 1024D (key only)
