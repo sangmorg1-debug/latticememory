@@ -369,6 +369,33 @@ Paraphrase cache benchmark: exact-match hits = **100%**, paraphrase hits = **0%*
 
 These are not yet built but are grounded in existing code. Listed in rough value order.
 
+### 0. Multimodal lattice platform — shape↔shape caching (validated 2026-06-17, not yet built)
+
+Explored as a possible "branch the E8 idea into something bigger" direction. Two real-data
+experiments were run (in the untracked `shape_memory_dev/` workspace, copied from the separate
+`e8-Project`/E8 Shape Memory effort — see that project's standalone Windows app for the original
+3D viewer/Rust backend):
+
+- **Cross-modal text→shape search: closed, infeasible.** Real OpenShape PointBERT-ViT-L
+  (768-D, CLIP-aligned by training) vs. real OpenCLIP ViT-L/14 text, 200 real Cap3D pairs:
+  same-pair float cosine only 0.106, mean Hamming 95.14/96 blocks (~99%), 0% exact/beam-R10
+  hit rate, E8 retrieval recall@1 2.0% vs. 11.5% float-cosine baseline. Confirms and extends
+  the existing image↔text negative result (see "What We Explicitly Don't Have" below) — cross-modal
+  E8 routing does not work for any encoder pairing tested so far.
+- **Same-modality shape↔shape caching: validated, viable.** Same encoder, 200 real Cap3D objects,
+  intra pairs = object vs. an augmented copy of itself (rotation + 80% subsample + jitter), inter
+  pairs = different objects: intra Hamming mean=67.1/p95=92, inter mean=90.9/p5=76, gap=-16 (tails
+  overlap — structurally identical to the BANKING77 text validation's gap=-4.0, which still shipped).
+  Threshold sweep finds usable operating points: threshold=64 → 43% recall/2% FP; threshold=50 →
+  23% recall/0% FP. This is the same risk profile the text cache already ships with.
+
+**Recommendation:** build `RFSnapShapeMemory`/shape-equivalent of `HammingRouter` mirroring the
+existing text runtime pattern (the core `RFSnapLatticeMemory` quantization layer is already
+modality-agnostic — confirmed by reading `memory.py`/`text_runtime.py`). Do not build cross-modal
+search — it's a closed question now, not an open one. Caveat: same-modality validation tested
+"catch the same object re-encountered," not "cluster different instances of the same category" —
+that's a separate, harder, untested claim.
+
 ### 1. `lattice review` CLI — Review Workflow Automation
 
 `LatticeFlywheel.export_review_queue()` and `load_reviewed()` already exist, but no CLI wraps

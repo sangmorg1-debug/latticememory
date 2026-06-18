@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from importlib.metadata import PackageNotFoundError, version as package_version
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,13 @@ from .memory import MemoryDocument, MemoryQuery, RFSnapLatticeMemory
 from .observability import GeneratorTrace, LatticeObservability
 from .semantic_cache import RFSnapSemanticCache
 from .text_runtime import RFSnapTextMemory
+
+
+def _latticememory_version() -> str:
+    try:
+        return package_version("latticememory")
+    except PackageNotFoundError:
+        return "0.0.0"
 
 
 class DocumentInput(BaseModel):
@@ -130,7 +138,7 @@ def create_app(
         observability = LatticeObservability(event_log_path=event_log_path, db_path=db_path)
         memory = RFSnapLatticeMemory(d_model=d_model, observability=observability)
 
-    app = FastAPI(title="RF-Snap LatticeMemory Observability API", version="0.1.0")
+    app = FastAPI(title="RF-Snap LatticeMemory Observability API", version=_latticememory_version())
     # All route handlers access memory via request.app.state.memory so that
     # callers can swap the memory at runtime by assigning app.state.memory.
     app.state.memory = memory

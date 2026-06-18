@@ -23,6 +23,9 @@ private/
 COMPLETION_SUMMARY.md
 test_run_postchange.txt
 
+# Shape Memory working copy — local dev only, moves to its own repo before publishing
+shape_memory_dev/
+
 # Claude Code project config — contains local paths and session state
 .claude/
 

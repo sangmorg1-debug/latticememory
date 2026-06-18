@@ -1,12 +1,28 @@
 from __future__ import annotations
 
 import hashlib
+from importlib.metadata import version
 from dataclasses import dataclass
 
 import numpy as np
 from fastapi.testclient import TestClient
 
 from latticememory.proxy import LatticeLLMProxy
+
+
+def test_proxy_openapi_version_matches_package_metadata():
+    proxy = LatticeLLMProxy(
+        upstream_url="https://example.test/v1/chat/completions",
+        upstream_api_key="test-key",
+        encoder=CanonicalPromptEncoder(d_model=8),
+        d_model=8,
+    )
+    client = TestClient(proxy.create_app())
+
+    response = client.get("/openapi.json")
+
+    assert response.status_code == 200
+    assert response.json()["info"]["version"] == version("latticememory")
 
 
 class CanonicalPromptEncoder:

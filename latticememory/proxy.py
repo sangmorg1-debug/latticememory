@@ -6,6 +6,7 @@ import hashlib
 import inspect
 import logging
 from collections.abc import Callable
+from importlib.metadata import PackageNotFoundError, version as package_version
 from typing import Any
 
 from latticememory.memory import RFSnapLatticeMemory
@@ -14,6 +15,13 @@ from latticememory.text_runtime import RFSnapTextMemory
 from latticememory.hamming_router import validate_calibration_data_schema
 
 logger = logging.getLogger("latticememory.proxy")
+
+
+def _latticememory_version() -> str:
+    try:
+        return package_version("latticememory")
+    except PackageNotFoundError:
+        return "0.0.0"
 
 
 def _require_fastapi():
@@ -374,7 +382,7 @@ class LatticeLLMProxy:
         from fastapi import FastAPI, HTTPException, Request
         from fastapi.responses import JSONResponse
 
-        app = FastAPI(title="LatticeMemory LLM Cache Proxy", version="0.1.0")
+        app = FastAPI(title="LatticeMemory LLM Cache Proxy", version=_latticememory_version())
         app.state.proxy = self
         app.state.admin_key = getattr(self, "admin_key", None)
         app.state.reviewer_key = getattr(self, "reviewer_key", None)

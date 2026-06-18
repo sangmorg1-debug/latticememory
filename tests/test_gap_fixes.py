@@ -16,10 +16,24 @@ import hashlib
 import json
 import tempfile
 import time
+from importlib.metadata import version
 from pathlib import Path
 
 import numpy as np
 import pytest
+
+
+def test_observability_service_openapi_version_matches_package_metadata():
+    from fastapi.testclient import TestClient
+
+    from latticememory.service import create_app
+
+    client = TestClient(create_app(d_model=8))
+
+    response = client.get("/openapi.json")
+
+    assert response.status_code == 200
+    assert response.json()["info"]["version"] == version("latticememory")
 
 
 # ---------------------------------------------------------------------------
