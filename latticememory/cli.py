@@ -321,7 +321,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
     try:
         import uvicorn
     except ImportError:
-        print("ERROR: uvicorn is required. pip install 'latticememory[proxy]'")
+        print("ERROR: uvicorn is required. pip install 'lattice-memory-e8[proxy]'")
         return 1
 
     print(f"Starting LatticeMemory proxy on port {args.port}...")

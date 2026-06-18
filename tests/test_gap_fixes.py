@@ -33,7 +33,7 @@ def test_observability_service_openapi_version_matches_package_metadata():
     response = client.get("/openapi.json")
 
     assert response.status_code == 200
-    assert response.json()["info"]["version"] == version("latticememory")
+    assert response.json()["info"]["version"] == version("lattice-memory-e8")
 
 
 # ---------------------------------------------------------------------------

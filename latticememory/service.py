@@ -16,7 +16,7 @@ from .text_runtime import RFSnapTextMemory
 
 def _latticememory_version() -> str:
     try:
-        return package_version("latticememory")
+        return package_version("lattice-memory-e8")
     except PackageNotFoundError:
         return "0.0.0"
 

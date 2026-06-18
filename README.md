@@ -49,16 +49,20 @@ E8 keys route fast for content that is semantically identical or near-identical.
 ## Install
 
 ```bash
-pip install latticememory
+pip install lattice-memory-e8
 ```
+
+The PyPI distribution is named `lattice-memory-e8` (the plain `latticememory` name
+collides with an unrelated existing package on PyPI) — the import name is unaffected:
+`import latticememory` works exactly as shown throughout this README.
 
 Optional extras:
 
 ```bash
-pip install 'latticememory[proxy]'   # FastAPI proxy server (fastapi, uvicorn, httpx)
-pip install 'latticememory[redis]'   # Redis backend for multi-instance caches
-pip install 'latticememory[hf]'      # HuggingFace datasets integration
-pip install 'latticememory[faiss]'   # FAISS vector fallback
+pip install 'lattice-memory-e8[proxy]'   # FastAPI proxy server (fastapi, uvicorn, httpx)
+pip install 'lattice-memory-e8[redis]'   # Redis backend for multi-instance caches
+pip install 'lattice-memory-e8[hf]'      # HuggingFace datasets integration
+pip install 'lattice-memory-e8[faiss]'   # FAISS vector fallback
 ```
 
 ---
@@ -163,7 +167,7 @@ if match:
 Drop-in OpenAI-compatible HTTP proxy. Same prompt or near-paraphrase returns the cached response without hitting the upstream model.
 
 ```bash
-pip install 'latticememory[proxy]'
+pip install 'lattice-memory-e8[proxy]'
 ```
 
 ```bash
@@ -194,7 +198,7 @@ Point your OpenAI client at `http://localhost:8000` — no other code changes ne
 ## LangChain Integration
 
 ```bash
-pip install latticememory langchain-core langchain-openai
+pip install lattice-memory-e8 langchain-core langchain-openai
 ```
 
 ```python

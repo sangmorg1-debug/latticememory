@@ -214,7 +214,7 @@ def load_msmarco_examples(
     except ImportError as exc:  # pragma: no cover - covered only without optional dep
         raise ImportError(
             "datasets is required for MS MARCO loading. Install with: "
-            "pip install 'latticememory[hf]'"
+            "pip install 'lattice-memory-e8[hf]'"
         ) from exc
 
     dataset = load_dataset(dataset_name, dataset_config, split=split, streaming=streaming)

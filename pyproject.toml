@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "latticememory"
+name = "lattice-memory-e8"
 version = "0.2.0"
 description = "LatticeMemory — E8 lattice semantic cache and LLM proxy. Calibrated Hamming routing, zero-false-positive intent caching, compliance mode."
 readme = "README.md"

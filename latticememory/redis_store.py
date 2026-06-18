@@ -23,7 +23,7 @@ Or via the proxy::
 
 Requirements::
 
-    pip install 'latticememory[redis]'
+    pip install 'lattice-memory-e8[redis]'
     # which adds: redis>=4.0.0
 """
 from __future__ import annotations
@@ -174,7 +174,7 @@ class LatticeRedisStore:
             import redis as redis_lib
         except ImportError as exc:
             raise ImportError(
-                "Redis support requires: pip install 'latticememory[redis]'"
+                "Redis support requires: pip install 'lattice-memory-e8[redis]'"
             ) from exc
 
         self._client = redis_lib.from_url(redis_url, db=db, decode_responses=False)

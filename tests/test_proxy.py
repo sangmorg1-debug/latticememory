@@ -22,7 +22,7 @@ def test_proxy_openapi_version_matches_package_metadata():
     response = client.get("/openapi.json")
 
     assert response.status_code == 200
-    assert response.json()["info"]["version"] == version("latticememory")
+    assert response.json()["info"]["version"] == version("lattice-memory-e8")
 
 
 class CanonicalPromptEncoder:

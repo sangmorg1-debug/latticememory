@@ -125,7 +125,7 @@ def part3_proxy_instructions():
     print("-" * 60)
     print()
     print("  # Install extras")
-    print("  pip install 'latticememory[proxy]'")
+    print("  pip install 'lattice-memory-e8[proxy]'")
     print()
     print("  # Start the proxy (replace sk-... with your key)")
     print("  lattice serve --key sk-...  --port 8000")

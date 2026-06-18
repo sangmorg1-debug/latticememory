@@ -19,7 +19,7 @@ logger = logging.getLogger("latticememory.proxy")
 
 def _latticememory_version() -> str:
     try:
-        return package_version("latticememory")
+        return package_version("lattice-memory-e8")
     except PackageNotFoundError:
         return "0.0.0"
 
@@ -29,7 +29,7 @@ def _require_fastapi():
         import fastapi  # noqa: F401
     except ImportError as exc:
         raise ImportError(
-            "LatticeLLMProxy requires FastAPI. Install with: pip install 'latticememory[proxy]'"
+            "LatticeLLMProxy requires FastAPI. Install with: pip install 'lattice-memory-e8[proxy]'"
         ) from exc
 
 

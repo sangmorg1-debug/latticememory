@@ -69,7 +69,7 @@ def main() -> None:
     except ImportError:
         raise SystemExit(
             "uvicorn is required to serve the proxy. "
-            "Install with: pip install 'latticememory[proxy]'"
+            "Install with: pip install 'lattice-memory-e8[proxy]'"
         )
     port = int(os.getenv("LATTICE_PORT", "8000"))
     host = os.getenv("LATTICE_HOST", "0.0.0.0")
