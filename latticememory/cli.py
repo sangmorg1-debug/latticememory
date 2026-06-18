@@ -7,6 +7,8 @@ lattice inspect    Print cache statistics for an existing cache file.
 lattice gaps       Show top miss clusters from a flywheel log.
 lattice drift      Detect drifting intents from a flywheel miss log.
 lattice calibrate  Calibrate HammingRouter threshold from labeled pairs.
+lattice review     Export/import flywheel miss clusters for ops review.
+lattice federated  Aggregate miss-key histograms across multiple flywheel logs.
 lattice serve      Start the proxy server.
 lattice export     Export cache entries to a portable JSONL file.
 lattice import     Import cache entries from a JSONL export.
@@ -570,6 +572,124 @@ def cmd_import(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
+# review
+# ---------------------------------------------------------------------------
+
+def cmd_review(args: argparse.Namespace) -> int:
+    """Drive the flywheel review workflow: export a review queue or import answered reviews."""
+    if args.review_command == "export":
+        return _cmd_review_export(args)
+    return _cmd_review_import(args)
+
+
+def _cmd_review_export(args: argparse.Namespace) -> int:
+    log_path = Path(args.log)
+    if not log_path.exists():
+        print(f"ERROR: log file not found: {log_path}")
+        return 1
+
+    from latticememory.flywheel import LatticeFlywheel
+
+    fw = LatticeFlywheel(log_path, cluster_threshold=args.threshold)
+    n = fw.export_review_queue(args.output, n=args.top, min_cluster_size=args.min_size)
+    print(f"Review queue exported: {args.output} ({n} items)")
+    return 0
+
+
+def _cmd_review_import(args: argparse.Namespace) -> int:
+    input_path = Path(args.input)
+    if not input_path.exists():
+        print(f"ERROR: input file not found: {input_path}")
+        return 1
+
+    try:
+        from sentence_transformers import SentenceTransformer
+    except ImportError:
+        print("ERROR: sentence-transformers is required. pip install sentence-transformers")
+        return 1
+
+    print(f"Loading encoder: {args.encoder}")
+    encoder = SentenceTransformer(args.encoder)
+    try:
+        d = int(encoder.get_embedding_dimension())
+    except AttributeError:
+        import numpy as np
+        probe = encoder.encode(["probe"])
+        d = int(np.asarray(probe).shape[-1])
+
+    from latticememory.text_runtime import RFSnapTextMemory
+    from latticememory.semantic_cache import RFSnapSemanticCache
+    from latticememory.memory import RFSnapLatticeMemory
+    from latticememory.flywheel import LatticeFlywheel
+
+    cache_path = Path(args.cache)
+    sq_path = str(cache_path) if cache_path.suffix == ".db" else None
+    lm = RFSnapLatticeMemory(d_model=d, sqlite_path=sq_path)
+    runtime = RFSnapTextMemory(encoder=encoder, d_model=d, memory=lm)
+    cache = RFSnapSemanticCache(runtime=runtime)
+
+    fw = LatticeFlywheel(args.log)
+    added = fw.load_reviewed(input_path, cache)
+    print(f"Imported {added} reviewed entries into {cache_path}")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# federated
+# ---------------------------------------------------------------------------
+
+def cmd_federated(args: argparse.Namespace) -> int:
+    """Aggregate miss-key histograms across multiple flywheel logs (multi-node deployments)."""
+    from latticememory.flywheel import LatticeFlywheel
+
+    per_log: dict[str, list[dict]] = {}
+    for log_arg in args.logs:
+        log_path = Path(log_arg)
+        if not log_path.exists():
+            print(f"ERROR: log file not found: {log_path}")
+            return 1
+        fw = LatticeFlywheel(log_path)
+        per_log[str(log_path)] = fw.federated_key_histogram()
+
+    combined: dict[str, dict] = {}
+    for log_name, rows in per_log.items():
+        for row in rows:
+            key = row["centroid_key_hex"]
+            entry = combined.setdefault(key, {
+                "centroid_key_hex": key,
+                "count": 0,
+                "first_seen": row["first_seen"],
+                "last_seen": row["last_seen"],
+                "nodes": [],
+            })
+            entry["count"] += row["count"]
+            entry["first_seen"] = min(entry["first_seen"], row["first_seen"])
+            entry["last_seen"] = max(entry["last_seen"], row["last_seen"])
+            entry["nodes"].append(log_name)
+
+    combined_rows = sorted(combined.values(), key=lambda r: -r["count"])
+
+    print(f"\nFederated key histogram across {len(per_log)} node(s):\n")
+    for log_name, rows in per_log.items():
+        print(f"  {log_name}: {len(rows)} key clusters")
+
+    print(f"\nCombined ({len(combined_rows)} unique key clusters):\n")
+    print(f"  {'count':>6}  {'nodes':>5}  centroid_key_hex")
+    print(f"  {'-'*6}  {'-'*5}  {'-'*16}")
+    for row in combined_rows[:20]:
+        print(f"  {row['count']:>6}  {len(row['nodes']):>5}  {row['centroid_key_hex'][:16]}...")
+
+    if args.export:
+        out_path = Path(args.export)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_data = {"per_log": per_log, "combined": combined_rows}
+        out_path.write_text(json.dumps(out_data, indent=2, ensure_ascii=False), encoding="utf-8")
+        print(f"\nFederated histogram exported: {args.export}")
+
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # dedup
 # ---------------------------------------------------------------------------
 
@@ -784,6 +904,28 @@ def main() -> int:
     p_gap.add_argument("--verbose",   action="store_true",  help="Show sample questions per cluster")
     p_gap.add_argument("--export",    default=None,         help="Export review queue to this JSON path")
 
+    # ---- review ----
+    p_rev = sub.add_parser("review", help="Flywheel review workflow: export/import miss clusters for ops review")
+    rev_sub = p_rev.add_subparsers(dest="review_command", required=True)
+
+    p_rev_exp = rev_sub.add_parser("export", help="Export top miss clusters as a review queue JSON")
+    p_rev_exp.add_argument("--log",       required=True,        help="Flywheel JSONL miss log")
+    p_rev_exp.add_argument("--output",    required=True,        help="Destination review queue JSON path")
+    p_rev_exp.add_argument("--top",       type=int, default=10, help="Number of top clusters to export")
+    p_rev_exp.add_argument("--min-size",  type=int, default=3,  help="Minimum cluster size")
+    p_rev_exp.add_argument("--threshold", type=int, default=25, help="Hamming cluster threshold (blocks)")
+
+    p_rev_imp = rev_sub.add_parser("import", help="Import answered review items back into a cache")
+    p_rev_imp.add_argument("--input",   required=True, help="Reviewed queue JSON (from `lattice review export`)")
+    p_rev_imp.add_argument("--log",     required=True, help="Flywheel JSONL miss log (for context)")
+    p_rev_imp.add_argument("--cache",   required=True, help="Destination cache file (.db or new)")
+    p_rev_imp.add_argument("--encoder", default="dfrokido/bge-large-e8-snap", help="Encoder model")
+
+    # ---- federated ----
+    p_fed = sub.add_parser("federated", help="Aggregate miss-key histograms across multiple flywheel logs (multi-node)")
+    p_fed.add_argument("--logs",   required=True, nargs="+", help="Flywheel JSONL miss logs (one or more, e.g. from multiple proxy replicas)")
+    p_fed.add_argument("--export", default=None,             help="Optional path to write the combined histogram as JSON")
+
     # ---- calibrate ----
     p_cal = sub.add_parser("calibrate", help="Calibrate HammingRouter threshold from labeled paraphrase/near-miss pairs")
     p_cal.add_argument("--paraphrases",  required=True, help="File of same-intent pairs ('text_a|||text_b' per line)")
@@ -850,6 +992,8 @@ def main() -> int:
         "gaps":      cmd_gaps,
         "drift":     cmd_drift,
         "calibrate": cmd_calibrate,
+        "review":    cmd_review,
+        "federated": cmd_federated,
         "serve":     cmd_serve,
         "export":    cmd_export,
         "import":    cmd_import,

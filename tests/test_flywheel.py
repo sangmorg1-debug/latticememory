@@ -334,3 +334,182 @@ def test_cmd_drift_missing_log(tmp_path, capsys):
     )
     rc = cmd_drift(args)
     assert rc == 1
+
+
+# ── review CLI command ─────────────────────────────────────────────────────
+
+class _FakeSentenceTransformer:
+    """Deterministic MD5-seeded fake encoder — no real model downloads."""
+
+    def __init__(self, *_args, **_kwargs):
+        self.d_model = 384
+
+    def get_embedding_dimension(self) -> int:
+        return self.d_model
+
+    def encode(self, sentences, **kwargs):
+        import hashlib
+
+        import numpy as np
+
+        vecs = []
+        for s in sentences:
+            seed = int(hashlib.md5(str(s).encode()).hexdigest(), 16) % (2**31)
+            rng = np.random.default_rng(seed)
+            v = rng.standard_normal(self.d_model).astype(np.float32)
+            v /= np.linalg.norm(v) + 1e-9
+            vecs.append(v)
+        return np.stack(vecs)
+
+
+def test_cmd_review_export_writes_review_queue(tmp_path, capsys):
+    from latticememory.cli import cmd_review
+
+    log = tmp_path / "misses.jsonl"
+    fw = LatticeFlywheel(log, cluster_threshold=25)
+    for i in range(4):
+        fw.log_miss(f"how do I reset my password variant {i}", e8_key_hex=_KEY_A)
+
+    output = tmp_path / "review_queue.json"
+    args = argparse.Namespace(
+        review_command="export",
+        log=str(log),
+        output=str(output),
+        top=10,
+        min_size=3,
+        threshold=25,
+    )
+    rc = cmd_review(args)
+    assert rc == 0
+    data = json.loads(output.read_text())
+    assert len(data) == 1
+    assert data[0]["size"] == 4
+    assert data[0]["answer"] is None
+    out = capsys.readouterr().out
+    assert "Review queue exported" in out
+
+
+def test_cmd_review_export_missing_log(tmp_path, capsys):
+    from latticememory.cli import cmd_review
+
+    args = argparse.Namespace(
+        review_command="export",
+        log=str(tmp_path / "nonexistent.jsonl"),
+        output=str(tmp_path / "review_queue.json"),
+        top=10,
+        min_size=3,
+        threshold=25,
+    )
+    rc = cmd_review(args)
+    assert rc == 1
+
+
+def test_cmd_review_import_loads_answered_items_into_cache(tmp_path, capsys, monkeypatch):
+    from latticememory.cli import cmd_review
+
+    monkeypatch.setattr("sentence_transformers.SentenceTransformer", _FakeSentenceTransformer)
+
+    log = tmp_path / "misses.jsonl"
+    queue_path = tmp_path / "review_queue.json"
+    queue_path.write_text(json.dumps([
+        {
+            "cluster_id": 0,
+            "representative_question": "how do I reset my password",
+            "sample_questions": ["how do I reset my password", "reset my password please"],
+            "size": 2,
+            "answer": "Go to Settings > Security > Reset Password.",
+            "intent_id": "password_reset",
+            "centroid_key_hex": _KEY_A,
+        },
+        {
+            "cluster_id": 1,
+            "representative_question": "unanswered question",
+            "sample_questions": ["unanswered question"],
+            "size": 1,
+            "answer": None,
+            "intent_id": None,
+            "centroid_key_hex": _KEY_B,
+        },
+    ]), encoding="utf-8")
+
+    cache_path = tmp_path / "cache.db"
+    args = argparse.Namespace(
+        review_command="import",
+        input=str(queue_path),
+        log=str(log),
+        cache=str(cache_path),
+        encoder="fake-model",
+    )
+    rc = cmd_review(args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "Imported 1" in out
+
+    from latticememory.memory import RFSnapLatticeMemory
+    from latticememory.semantic_cache import RFSnapSemanticCache
+    from latticememory.text_runtime import RFSnapTextMemory
+
+    lm = RFSnapLatticeMemory(d_model=384, sqlite_path=str(cache_path))
+    runtime = RFSnapTextMemory(encoder=None, d_model=384, memory=lm)
+    cache = RFSnapSemanticCache(runtime=runtime)
+    assert cache.size >= 1
+
+
+def test_cmd_review_import_missing_input(tmp_path, capsys, monkeypatch):
+    from latticememory.cli import cmd_review
+
+    monkeypatch.setattr("sentence_transformers.SentenceTransformer", _FakeSentenceTransformer)
+
+    args = argparse.Namespace(
+        review_command="import",
+        input=str(tmp_path / "nonexistent.json"),
+        log=str(tmp_path / "misses.jsonl"),
+        cache=str(tmp_path / "cache.db"),
+        encoder="fake-model",
+    )
+    rc = cmd_review(args)
+    assert rc == 1
+
+
+# ── federated CLI command ────────────────────────────────────────────────────
+
+def test_cmd_federated_aggregates_multiple_logs(tmp_path, capsys):
+    from latticememory.cli import cmd_federated
+
+    log1 = tmp_path / "node1.jsonl"
+    log2 = tmp_path / "node2.jsonl"
+    fw1 = LatticeFlywheel(log1)
+    fw2 = LatticeFlywheel(log2)
+    fw1.log_miss("alpha", e8_key_hex=_KEY_A)
+    fw1.log_miss("alpha again", e8_key_hex=_KEY_A)
+    fw2.log_miss("beta", e8_key_hex=_KEY_B)
+
+    args = argparse.Namespace(logs=[str(log1), str(log2)], export=None)
+    rc = cmd_federated(args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert str(log1) in out
+    assert str(log2) in out
+
+
+def test_cmd_federated_exports_json(tmp_path, capsys):
+    from latticememory.cli import cmd_federated
+
+    log1 = tmp_path / "node1.jsonl"
+    fw1 = LatticeFlywheel(log1)
+    fw1.log_miss("alpha", e8_key_hex=_KEY_A)
+
+    export_path = tmp_path / "federated.json"
+    args = argparse.Namespace(logs=[str(log1)], export=str(export_path))
+    rc = cmd_federated(args)
+    assert rc == 0
+    data = json.loads(export_path.read_text())
+    assert isinstance(data, dict)
+
+
+def test_cmd_federated_missing_log(tmp_path, capsys):
+    from latticememory.cli import cmd_federated
+
+    args = argparse.Namespace(logs=[str(tmp_path / "nonexistent.jsonl")], export=None)
+    rc = cmd_federated(args)
+    assert rc == 1

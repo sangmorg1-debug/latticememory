@@ -400,7 +400,7 @@ search — it's a closed question now, not an open one. Caveat: same-modality va
 "catch the same object re-encountered," not "cluster different instances of the same category" —
 that's a separate, harder, untested claim.
 
-### 1. `lattice review` CLI — Review Workflow Automation
+### 1. `lattice review` CLI — Review Workflow Automation (DONE 2026-06-18)
 
 `LatticeFlywheel.export_review_queue()` and `load_reviewed()` already exist, but no CLI wraps
 them. A `lattice review export` + `lattice review import` pair would let ops teams drive the
@@ -408,7 +408,7 @@ full miss-to-cache feedback loop from the command line, with no code changes.
 
 **Effort:** Small (1 day). **Value:** Makes flywheel usable without writing Python.
 
-### 2. `lattice federated` CLI — Multi-Node Key Histogram
+### 2. `lattice federated` CLI — Multi-Node Key Histogram (DONE 2026-06-18)
 
 `LatticeFlywheel.federated_key_histogram()` is implemented but not surfaced as a CLI command.
 A `lattice federated --logs node1.jsonl node2.jsonl ...` command would aggregate miss
