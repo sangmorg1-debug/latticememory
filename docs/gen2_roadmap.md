@@ -86,6 +86,10 @@ snaps to the same E8 cell) returns the cached response without hitting the upstr
 `calibrate_threshold()` before enabling `serve` mode. The proxy ships with a conservative
 default (threshold=70) that avoids false positives at the cost of recall. For well-scoped
 domains (helpdesk, support, fixed-vocabulary), calibration takes ~100 sample pairs.
+**`lattice calibrate` CLI — DONE 2026-06-18:** wraps `gap_stats()`/`calibrate_threshold()`
+directly (`lattice calibrate --paraphrases FILE --near-misses FILE [--encoder MODEL]
+[--fp-budget N] [--export PATH]`), so this calibration step no longer requires knowing the
+standalone `calibrate_proxy.py` script exists.
 
 **Who buys it:** Any team spending >$5K/month on LLM API calls with high query repetition —
 customer support bots, internal knowledge assistants, coding assistants with repeated context.

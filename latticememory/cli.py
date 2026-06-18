@@ -6,6 +6,7 @@ lattice populate   Load Q&A pairs from CSV/JSON into a cache file.
 lattice inspect    Print cache statistics for an existing cache file.
 lattice gaps       Show top miss clusters from a flywheel log.
 lattice drift      Detect drifting intents from a flywheel miss log.
+lattice calibrate  Calibrate HammingRouter threshold from labeled pairs.
 lattice serve      Start the proxy server.
 lattice export     Export cache entries to a portable JSONL file.
 lattice import     Import cache entries from a JSONL export.
@@ -292,6 +293,118 @@ def cmd_gaps(args: argparse.Namespace) -> int:
     if args.export:
         n = fw.export_review_queue(args.export, n=args.top, min_cluster_size=args.min_size)
         print(f"  Review queue exported: {args.export} ({n} items)")
+
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# calibrate
+# ---------------------------------------------------------------------------
+
+def _load_pair_file(path: Path) -> list[tuple[str, str]]:
+    """Load 'text_a|||text_b' pairs from a text file, one pair per line."""
+    pairs: list[tuple[str, str]] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split("|||")
+        if len(parts) != 2:
+            continue
+        a, b = parts[0].strip(), parts[1].strip()
+        if a and b:
+            pairs.append((a, b))
+    return pairs
+
+
+def cmd_calibrate(args: argparse.Namespace) -> int:
+    """Calibrate a HammingRouter threshold from labeled paraphrase/near-miss pairs."""
+    paraphrases_path = Path(args.paraphrases)
+    near_misses_path = Path(args.near_misses)
+    if not paraphrases_path.exists():
+        print(f"ERROR: paraphrases file not found: {paraphrases_path}")
+        return 1
+    if not near_misses_path.exists():
+        print(f"ERROR: near-misses file not found: {near_misses_path}")
+        return 1
+
+    paraphrase_pairs = _load_pair_file(paraphrases_path)
+    near_miss_pairs = _load_pair_file(near_misses_path)
+    if not paraphrase_pairs:
+        print(f"ERROR: no valid pairs found in {paraphrases_path}")
+        return 1
+    if not near_miss_pairs:
+        print(f"ERROR: no valid pairs found in {near_misses_path}")
+        return 1
+
+    from latticememory.hamming_router import HammingRouter
+
+    print(f"Loading encoder: {args.encoder}")
+    router = HammingRouter.from_model(args.encoder)
+
+    print("Computing Hamming distance statistics...")
+    gap_results = router.gap_stats(paraphrase_pairs, near_miss_pairs)
+    cal_results = router.calibrate_threshold(
+        paraphrase_pairs, near_miss_pairs, fp_budget=args.fp_budget
+    )
+
+    print("\n=======================================================")
+    print("                HAMMING DISTANCE STATISTICS            ")
+    print("=======================================================")
+    print(f"Paraphrase pairs: {gap_results['n_paraphrase_pairs']}")
+    print(f"  Min Hamming: {gap_results['paraphrase']['min']}")
+    print(f"  P5 Hamming:  {gap_results['paraphrase']['p5']}")
+    print(f"  Mean Hamming: {gap_results['paraphrase']['mean']}")
+    print(f"  P95 Hamming: {gap_results['paraphrase']['p95']}")
+    print(f"  Max Hamming: {gap_results['paraphrase']['max']}")
+    print()
+    print(f"Near-miss pairs: {gap_results['n_near_miss_pairs']}")
+    print(f"  Min Hamming: {gap_results['near_miss']['min']}")
+    print(f"  P5 Hamming:  {gap_results['near_miss']['p5']}")
+    print(f"  Mean Hamming: {gap_results['near_miss']['mean']}")
+    print(f"  P95 Hamming: {gap_results['near_miss']['p95']}")
+    print(f"  Max Hamming: {gap_results['near_miss']['max']}")
+    print()
+    print(f"Hamming Gap (near_miss_p5 - paraphrase_p95): {gap_results['gap']}")
+    if gap_results["gap"] <= 0:
+        print("  WARNING: Gap <= 0. No threshold gives FP=0 at non-zero recall.")
+        print("  Consider training a snap encoder or raising --fp-budget.")
+    print("=======================================================")
+
+    print("\nTHRESHOLD SWEEP:")
+    print("-------------------------------------------------------")
+    print(f"{'Threshold':10} | {'Recall (TP Rate)':17} | {'FP Rate':10}")
+    print("-------------------------------------------------------")
+    for row in gap_results["threshold_table"]:
+        marker = " <-- selected" if row["threshold"] == cal_results["threshold"] else ""
+        print(f"{row['threshold']:<10} | {row['recall']:<17.3f} | {row['fp_rate']:<10.3f}{marker}")
+    print("-------------------------------------------------------")
+
+    print("\nRECOMMENDATION:")
+    print("-------------------------------------------------------")
+    if cal_results["threshold"] == -1:
+        print("WARNING: No valid threshold satisfies the requested FP budget.")
+        print(f"FP Budget: {args.fp_budget}")
+    else:
+        reliable = len(paraphrase_pairs) >= 100 and len(near_miss_pairs) >= 100
+        print(f"Optimal Threshold: {cal_results['threshold']}")
+        print(f"Expected Recall:   {cal_results['recall']:.2%}")
+        print(f"Expected FP Rate:  {cal_results['fp_rate']:.2%}")
+        print(f"FP Budget:         {cal_results['fp_budget']:.2%}")
+        print(f"Reliable:          {'Yes' if reliable else 'No (< 100 pairs per type — not production-ready)'}")
+    print("-------------------------------------------------------")
+
+    if args.export:
+        out_path = Path(args.export)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_data = {
+            "model": args.encoder,
+            "fp_budget": args.fp_budget,
+            "calibration": cal_results,
+            "gap_stats": gap_results,
+        }
+        out_path.write_text(json.dumps(out_data, indent=2, ensure_ascii=False), encoding="utf-8")
+        print(f"\nWrote calibration JSON to: {args.export}")
 
     return 0
 
@@ -671,6 +784,14 @@ def main() -> int:
     p_gap.add_argument("--verbose",   action="store_true",  help="Show sample questions per cluster")
     p_gap.add_argument("--export",    default=None,         help="Export review queue to this JSON path")
 
+    # ---- calibrate ----
+    p_cal = sub.add_parser("calibrate", help="Calibrate HammingRouter threshold from labeled paraphrase/near-miss pairs")
+    p_cal.add_argument("--paraphrases",  required=True, help="File of same-intent pairs ('text_a|||text_b' per line)")
+    p_cal.add_argument("--near-misses",  required=True, help="File of different-intent-but-similar pairs (same format)")
+    p_cal.add_argument("--encoder",      default="dfrokido/bge-large-e8-snap", help="Encoder model")
+    p_cal.add_argument("--fp-budget",    type=float, default=0.0, help="Maximum false-positive rate budget (default: 0.0 = zero FP)")
+    p_cal.add_argument("--export",       default=None, help="Optional path to write full sweep + recommendation as JSON")
+
     # ---- serve ----
     p_srv = sub.add_parser("serve", help="Start the proxy server")
     p_srv.add_argument("--key",          default=None,    help="OpenAI / LLM API key")
@@ -728,6 +849,7 @@ def main() -> int:
         "inspect":   cmd_inspect,
         "gaps":      cmd_gaps,
         "drift":     cmd_drift,
+        "calibrate": cmd_calibrate,
         "serve":     cmd_serve,
         "export":    cmd_export,
         "import":    cmd_import,
