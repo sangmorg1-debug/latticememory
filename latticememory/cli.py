@@ -397,10 +397,26 @@ def cmd_calibrate(args: argparse.Namespace) -> int:
     print("-------------------------------------------------------")
 
     if args.export:
+        import datetime
+
+        from latticememory.hamming_router import compute_calibration_data_sha256
+
         out_path = Path(args.export)
         out_path.parent.mkdir(parents=True, exist_ok=True)
+        sha = compute_calibration_data_sha256(
+            {"paraphrases": paraphrase_pairs, "near_misses": near_miss_pairs}
+        )
         out_data = {
+            # Matches the schema latticememory.proxy.LatticeLLMProxy requires to load
+            # a file via LATTICE_CALIBRATION_DATA_PATH / calibration_data_path without
+            # re-running calibration -- see validate_precalibrated_artifact_schema().
+            # Keep this in sync with calibrate_proxy.py's --export shape.
+            "artifact_type": "latticememory_hamming_calibration",
+            "artifact_version": 1,
             "model": args.encoder,
+            "d_model": router._d_model,
+            "calibration_data_sha256": sha,
+            "created_at": datetime.datetime.utcnow().isoformat() + "Z",
             "fp_budget": args.fp_budget,
             "calibration": cal_results,
             "gap_stats": gap_results,

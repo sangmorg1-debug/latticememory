@@ -88,6 +88,69 @@ def test_cmd_calibrate_exports_json(tmp_path, capsys):
     assert "gap_stats" in data
 
 
+def test_cmd_calibrate_export_is_a_valid_precalibrated_artifact(tmp_path, capsys):
+    from latticememory.cli import cmd_calibrate
+    from latticememory.hamming_router import validate_precalibrated_artifact_schema
+
+    paraphrases = tmp_path / "paraphrases.txt"
+    near_misses = tmp_path / "near_misses.txt"
+    _write_pairs(paraphrases, [(f"question {i}", f"question {i} restated") for i in range(20)])
+    _write_pairs(near_misses, [(f"topic {i} alpha", f"topic {i} beta") for i in range(20)])
+
+    export_path = tmp_path / "calibration.json"
+    args = argparse.Namespace(
+        paraphrases=str(paraphrases),
+        near_misses=str(near_misses),
+        encoder="fake-model",
+        fp_budget=0.0,
+        export=str(export_path),
+    )
+    cmd_calibrate(args)
+
+    data = json.loads(export_path.read_text())
+    # Must not raise -- this is the exact check latticememory.proxy.LatticeLLMProxy
+    # runs before trusting a calibration file enough to set a live threshold from it.
+    validate_precalibrated_artifact_schema(data)
+    assert data["model"] == "fake-model"
+    assert data["d_model"] == 384
+
+
+def test_cmd_calibrate_export_loads_into_a_live_proxy(tmp_path, capsys):
+    from latticememory.cli import cmd_calibrate
+    from latticememory.proxy import LatticeLLMProxy
+
+    paraphrases = tmp_path / "paraphrases.txt"
+    near_misses = tmp_path / "near_misses.txt"
+    _write_pairs(paraphrases, [(f"question {i}", f"question {i} restated") for i in range(20)])
+    _write_pairs(near_misses, [(f"topic {i} alpha", f"topic {i} beta") for i in range(20)])
+
+    export_path = tmp_path / "calibration.json"
+    args = argparse.Namespace(
+        paraphrases=str(paraphrases),
+        near_misses=str(near_misses),
+        encoder="fake-model",
+        fp_budget=0.0,
+        export=str(export_path),
+    )
+    cmd_calibrate(args)
+
+    proxy = LatticeLLMProxy(
+        upstream_url="https://example.test/v1/chat/completions",
+        encoder_model="fake-model",
+        encoder=HashEncoder(384),
+        d_model=384,
+        enable_hamming_router=True,
+        calibration_data_path=str(export_path),
+        require_calibration=True,
+        fp_budget=0.0,
+    )
+
+    assert proxy.hamming_router_calibrated is True
+    assert proxy.hamming_router_n_paraphrase_pairs == 20
+    assert proxy.hamming_router_n_near_miss_pairs == 20
+    assert proxy.cache._hamming_threshold == proxy.cache._hamming_router.threshold
+
+
 def test_cmd_calibrate_missing_paraphrases_file(tmp_path, capsys):
     from latticememory.cli import cmd_calibrate
 
