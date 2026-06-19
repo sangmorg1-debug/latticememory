@@ -285,12 +285,18 @@ class JudgingUpstream:
     verdict: str = "YES"
     calls: int = 0
     judge_calls: int = 0
+    judge_models: list = None  # type: ignore[assignment]
+
+    def __post_init__(self):
+        if self.judge_models is None:
+            self.judge_models = []
 
     async def __call__(self, payload, headers):
         messages = payload.get("messages", [])
         content = messages[-1]["content"] if messages else ""
         if "YES or NO" in content:
             self.judge_calls += 1
+            self.judge_models.append(payload.get("model"))
             return {
                 "id": f"chatcmpl-judge-{self.judge_calls}",
                 "object": "chat.completion",
@@ -420,6 +426,60 @@ def test_hamming_rerank_disabled_by_default_skips_judge_call():
     assert res.headers["X-Lattice-Cache"] == "HIT"
     assert res.headers["X-Lattice-Retrieval-Path"] == "hamming_nn"
     assert upstream.judge_calls == 0
+
+
+def test_hamming_rerank_uses_configured_judge_model_not_request_model():
+    """hamming_rerank_model lets the judge use a dedicated model, distinct from whatever
+    model the request asked for. This matters in practice, not just in theory: a reasoning
+    model given a tiny max_tokens budget for a one-word verdict spends the whole budget on
+    reasoning tokens and never reaches an answer, silently rejecting every candidate. A
+    small, fast, non-reasoning model avoids that without needing a bigger token budget.
+    """
+    upstream = JudgingUpstream(verdict="YES")
+    proxy = LatticeLLMProxy(
+        upstream_url="https://example.test/v1/chat/completions",
+        encoder=HashEncoder(384),
+        d_model=384,
+        upstream_client=upstream,
+        enable_hamming_router=True,
+        hamming_threshold=128,
+        hamming_rerank=True,
+        hamming_rerank_model="judge-model-v1",
+    )
+    client = TestClient(proxy.create_app())
+
+    client.post("/v1/chat/completions", json=_request("What is the capital of France?"))
+    res = client.post(
+        "/v1/chat/completions",
+        json={"model": "request-model-v9", "messages": [{"role": "user", "content": "Which city is France's capital?"}]},
+    )
+
+    assert res.headers["X-Lattice-Cache"] == "HIT"
+    assert upstream.judge_models == ["judge-model-v1"]
+
+
+def test_hamming_rerank_falls_back_to_request_model_when_unconfigured():
+    """Backward compatible: hamming_rerank_model defaults to None, judge uses the request's model."""
+    upstream = JudgingUpstream(verdict="YES")
+    proxy = LatticeLLMProxy(
+        upstream_url="https://example.test/v1/chat/completions",
+        encoder=HashEncoder(384),
+        d_model=384,
+        upstream_client=upstream,
+        enable_hamming_router=True,
+        hamming_threshold=128,
+        hamming_rerank=True,
+    )
+    client = TestClient(proxy.create_app())
+
+    client.post("/v1/chat/completions", json=_request("What is the capital of France?"))
+    res = client.post(
+        "/v1/chat/completions",
+        json={"model": "request-model-v9", "messages": [{"role": "user", "content": "Which city is France's capital?"}]},
+    )
+
+    assert res.headers["X-Lattice-Cache"] == "HIT"
+    assert upstream.judge_models == ["request-model-v9"]
 
 
 def test_hamming_router_enabled_returns_hamming_nn_hit():

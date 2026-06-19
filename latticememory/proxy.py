@@ -65,6 +65,14 @@ class LatticeLLMProxy:
         # boundary -- no threshold choice separates them. This is a runtime check, not
         # a calibration fix.
         hamming_rerank: bool = False,
+        # Dedicated judge model for hamming_rerank, distinct from the request's model.
+        # Defaults to None (fall back to the request's model). Matters in practice: a
+        # reasoning model given a tiny max_tokens budget for a one-word verdict spends the
+        # whole budget on reasoning tokens and never reaches an answer, silently rejecting
+        # every candidate (verified empirically -- see
+        # docs/manual-results/2026-06-19-hamming-rerank-judge-model-bug.md in the IDE repo).
+        # Point this at a small, fast, non-reasoning model instead.
+        hamming_rerank_model: str | None = None,
         calibration_data_path: str | None = None,
         fp_budget: float = 0.0,
         require_calibration: bool = False,
@@ -87,6 +95,7 @@ class LatticeLLMProxy:
         self.encoder_model = encoder_model
         self.upstream_client = upstream_client
         self.hamming_rerank = hamming_rerank
+        self.hamming_rerank_model = hamming_rerank_model
         self.cost_per_1k_input_tokens_usd = float(cost_per_1k_input_tokens_usd)
         self.batch_size = int(batch_size)
         
@@ -446,7 +455,7 @@ class LatticeLLMProxy:
             rerank_rejected = False
             if cached.hit and cached.retrieval_path == "hamming_nn" and proxy.hamming_rerank:
                 confirmed = await proxy._rerank_confirms_match(
-                    payload.get("model"), prompt, cached.source_prompt or ""
+                    proxy.hamming_rerank_model or payload.get("model"), prompt, cached.source_prompt or ""
                 )
                 if not confirmed:
                     rerank_rejected = True

@@ -446,6 +446,8 @@ def cmd_serve(args: argparse.Namespace) -> int:
         os.environ["LATTICE_HAMMING_MODE"] = args.hamming_mode
     if args.hamming_rerank:
         os.environ["LATTICE_HAMMING_RERANK"] = "true"
+    if args.hamming_rerank_model:
+        os.environ["LATTICE_HAMMING_RERANK_MODEL"] = args.hamming_rerank_model
     if args.warm_path:
         os.environ["LATTICE_WARM_PATH"] = args.warm_path
     if args.admin_key:
@@ -960,6 +962,7 @@ def main() -> int:
     p_srv.add_argument("--miss-log",     default=None,    help="Flywheel miss log path")
     p_srv.add_argument("--hamming-mode", default=None,    help="serve | shadow | off")
     p_srv.add_argument("--hamming-rerank", action="store_true", help="LLM second-pass check on hamming_nn candidates before serving (off by default)")
+    p_srv.add_argument("--hamming-rerank-model", default=None, help="Dedicated judge model for --hamming-rerank, distinct from the chat model. Use a small, fast, non-reasoning model -- a reasoning model can spend its whole token budget reasoning and never produce a verdict.")
     p_srv.add_argument("--warm-path",    default=None,    help="CSV/JSON/JSONL file to pre-warm cache at startup")
     p_srv.add_argument("--admin-key",    default=None,    help="Secret key required for /v1/cache mutations")
     p_srv.add_argument("--host",         default="0.0.0.0")
