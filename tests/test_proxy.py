@@ -342,6 +342,28 @@ def test_hamming_rerank_rejects_mismatched_candidate():
     assert upstream.calls == 2  # seed put + real generation after rejection
 
 
+def test_hamming_rerank_rejects_negative_verdict_that_mentions_yes():
+    """A negative explanation containing the token YES must still fail closed."""
+    upstream = JudgingUpstream(verdict="NO, not YES.")
+    proxy = LatticeLLMProxy(
+        upstream_url="https://example.test/v1/chat/completions",
+        encoder=HashEncoder(384),
+        d_model=384,
+        upstream_client=upstream,
+        enable_hamming_router=True,
+        hamming_threshold=128,
+        hamming_rerank=True,
+    )
+    client = TestClient(proxy.create_app())
+
+    client.post("/v1/chat/completions", json=_request("What is the capital of France?"))
+    res = client.post("/v1/chat/completions", json=_request("How do I reset my router?"))
+
+    assert res.headers["X-Lattice-Cache"] == "MISS"
+    assert res.headers["X-Lattice-Retrieval-Path"] == "hamming_rerank_rejected_miss"
+    assert res.headers["X-Lattice-Rerank-Rejected"] == "true"
+
+
 def test_hamming_rerank_confirms_matching_candidate():
     """A confirmed candidate still serves as a normal hamming_nn hit, no extra upstream generation call."""
     upstream = JudgingUpstream(verdict="YES")

@@ -6,6 +6,7 @@ import hashlib
 import inspect
 import logging
 import dataclasses
+import re
 from collections.abc import Callable
 from importlib.metadata import PackageNotFoundError, version as package_version
 from typing import Any
@@ -69,8 +70,8 @@ class LatticeLLMProxy:
         # Defaults to None (fall back to the request's model). Matters in practice: a
         # reasoning model given a tiny max_tokens budget for a one-word verdict spends the
         # whole budget on reasoning tokens and never reaches an answer, silently rejecting
-        # every candidate (verified empirically -- see
-        # docs/manual-results/2026-06-19-hamming-rerank-judge-model-bug.md in the IDE repo).
+        # every candidate (verified empirically -- see the IDE repo's
+        # docs/manual-results/2026-06-19-hamming-rerank-fix-verified.md).
         # Point this at a small, fast, non-reasoning model instead.
         hamming_rerank_model: str | None = None,
         calibration_data_path: str | None = None,
@@ -1181,7 +1182,8 @@ class LatticeLLMProxy:
             verdict = self._extract_response_text(body)
         except Exception:
             return False
-        return "YES" in verdict.upper()
+        tokens = re.findall(r"[A-Za-z]+", verdict)
+        return bool(tokens and tokens[0].upper() == "YES")
 
     def _estimate_savings(self, cached_value: Any, prompt: str) -> float:
         prompt_tokens = 0
