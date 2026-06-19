@@ -5,6 +5,7 @@ import warnings
 import hashlib
 import inspect
 import logging
+import dataclasses
 from collections.abc import Callable
 from importlib.metadata import PackageNotFoundError, version as package_version
 from typing import Any
@@ -56,6 +57,14 @@ class LatticeLLMProxy:
         enable_hamming_router: bool | None = None,
         hamming_router_mode: str | None = None,
         hamming_threshold: int = 70,
+        # Second-pass LLM check on hamming_nn candidates before serving them. Off by
+        # default. See docs/manual-results/2026-06-19-adversarial-template-rate.md in
+        # the IDE repo for why this exists: a calibrated, "Reliable: Yes" threshold
+        # does not protect against same-template/different-topic adversarial queries,
+        # because they sit inside the paraphrase distance range, not at the threshold
+        # boundary -- no threshold choice separates them. This is a runtime check, not
+        # a calibration fix.
+        hamming_rerank: bool = False,
         calibration_data_path: str | None = None,
         fp_budget: float = 0.0,
         require_calibration: bool = False,
@@ -77,6 +86,7 @@ class LatticeLLMProxy:
         self.upstream_api_key = upstream_api_key
         self.encoder_model = encoder_model
         self.upstream_client = upstream_client
+        self.hamming_rerank = hamming_rerank
         self.cost_per_1k_input_tokens_usd = float(cost_per_1k_input_tokens_usd)
         self.batch_size = int(batch_size)
         
@@ -433,6 +443,23 @@ class LatticeLLMProxy:
             cached = proxy.cache.get(prompt)
             key_hex = cached.lattice_key.hex() if cached.lattice_key else "unknown"
 
+            rerank_rejected = False
+            if cached.hit and cached.retrieval_path == "hamming_nn" and proxy.hamming_rerank:
+                confirmed = await proxy._rerank_confirms_match(
+                    payload.get("model"), prompt, cached.source_prompt or ""
+                )
+                if not confirmed:
+                    rerank_rejected = True
+                    cached = dataclasses.replace(
+                        cached,
+                        hit=False,
+                        shadow_hit=True,
+                        shadow_cache_id=cached.cache_id,
+                        shadow_hamming_distance=cached.hamming_distance,
+                        shadow_source_prompt=cached.source_prompt,
+                        shadow_value=cached.value,
+                    )
+
             # ---- Streaming cache hit: re-emit stored body as SSE ----
             if cached.hit and is_stream:
                 is_validated = (
@@ -588,7 +615,7 @@ class LatticeLLMProxy:
             if cached.shadow_hit:
                 # Log the shadow hit event in the audit trail but do not serve it
                 proxy._log_audit_event(
-                    event_type="SHADOW_HIT",
+                    event_type="RERANK_REJECTED" if rerank_rejected else "SHADOW_HIT",
                     prompt=prompt,
                     key_hex=key_hex,
                     response_text=proxy._extract_response_text(cached.shadow_value),
@@ -627,9 +654,16 @@ class LatticeLLMProxy:
                     nearest_cache_distance=cached.shadow_hamming_distance if cached.shadow_hit else -1,
                 )
 
+            if rerank_rejected:
+                retrieval_path = "hamming_rerank_rejected_miss"
+            elif cached.shadow_hit:
+                retrieval_path = "shadow_match_miss"
+            else:
+                retrieval_path = "miss"
+
             headers = {
                 "X-Lattice-Cache": "MISS",
-                "X-Lattice-Retrieval-Path": "shadow_match_miss" if cached.shadow_hit else "miss",
+                "X-Lattice-Retrieval-Path": retrieval_path,
                 "X-Lattice-Savings-USD": "0.000000",
                 "X-Lattice-Compliance": "PENDING_VALIDATION" if proxy.compliance_mode else "NONE",
                 "X-Lattice-Audit-Hash": evt["hash"],
@@ -637,6 +671,8 @@ class LatticeLLMProxy:
             if cached.shadow_hit:
                 headers["X-Lattice-Shadow-Hit"] = "true"
                 headers["X-Lattice-Shadow-Distance"] = str(cached.shadow_shadow_hamming_distance if hasattr(cached, "shadow_shadow_hamming_distance") else cached.shadow_hamming_distance)
+            if rerank_rejected:
+                headers["X-Lattice-Rerank-Rejected"] = "true"
             return JSONResponse(content=upstream_body, headers=headers)
 
         @app.post("/v1/compliance/validate")
@@ -1104,6 +1140,39 @@ class LatticeLLMProxy:
         if not isinstance(data, dict):
             raise HTTPException(status_code=502, detail="upstream returned non-object JSON")
         return data
+
+    async def _rerank_confirms_match(self, model: str | None, new_prompt: str, cached_prompt: str) -> bool:
+        """Ask the upstream model whether a hamming_nn candidate is actually the same question.
+
+        Fails closed: if there's nothing to compare against, or the judge call itself
+        errors, do not trust the unverified candidate. A wrong cached answer is worse
+        than a cache miss -- the same reasoning lattice calibrate's zero-FP default
+        already uses, applied at serve time instead of calibration time.
+        """
+        if not cached_prompt:
+            return True
+        judge_payload = {
+            "model": model or self.encoder_model,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": (
+                        "Are these two questions asking for the same information, such "
+                        "that the same answer would correctly address both? Reply with "
+                        "exactly one word: YES or NO.\n\n"
+                        f"Question A: {new_prompt}\nQuestion B: {cached_prompt}"
+                    ),
+                }
+            ],
+            "max_tokens": 5,
+            "temperature": 0,
+        }
+        try:
+            body = await self._call_upstream(judge_payload)
+            verdict = self._extract_response_text(body)
+        except Exception:
+            return False
+        return "YES" in verdict.upper()
 
     def _estimate_savings(self, cached_value: Any, prompt: str) -> float:
         prompt_tokens = 0

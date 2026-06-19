@@ -20,6 +20,7 @@ audit_log_path = os.getenv("LATTICE_AUDIT_LOG_PATH", None)
 divergence_threshold = float(os.getenv("LATTICE_DIVERGENCE_THRESHOLD", "0.1")) if os.getenv("LATTICE_DIVERGENCE_THRESHOLD") else None
 fp_budget = float(os.getenv("LATTICE_FP_BUDGET", "0.0"))
 calibration_data_path = os.getenv("LATTICE_CALIBRATION_DATA_PATH", None)
+hamming_rerank = os.getenv("LATTICE_HAMMING_RERANK", "false").lower() == "true"
 miss_log_path = os.getenv("LATTICE_MISS_LOG_PATH", None)
 warm_path     = os.getenv("LATTICE_WARM_PATH", None)
 admin_key     = os.getenv("LATTICE_ADMIN_KEY", None)
@@ -52,6 +53,7 @@ proxy = LatticeLLMProxy(
     divergence_threshold=divergence_threshold,
     fp_budget=fp_budget,
     calibration_data_path=calibration_data_path,
+    hamming_rerank=hamming_rerank,
     miss_log_path=miss_log_path,
     warm_path=warm_path,
     admin_key=admin_key,

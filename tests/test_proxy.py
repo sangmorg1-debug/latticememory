@@ -280,6 +280,148 @@ def test_hamming_router_disabled_by_default_gives_paraphrase_miss():
     assert upstream.calls == 2
 
 
+@dataclass
+class JudgingUpstream:
+    verdict: str = "YES"
+    calls: int = 0
+    judge_calls: int = 0
+
+    async def __call__(self, payload, headers):
+        messages = payload.get("messages", [])
+        content = messages[-1]["content"] if messages else ""
+        if "YES or NO" in content:
+            self.judge_calls += 1
+            return {
+                "id": f"chatcmpl-judge-{self.judge_calls}",
+                "object": "chat.completion",
+                "model": payload.get("model", "test-model"),
+                "choices": [
+                    {"index": 0, "message": {"role": "assistant", "content": self.verdict}, "finish_reason": "stop"}
+                ],
+                "usage": {"prompt_tokens": 5, "completion_tokens": 1, "total_tokens": 6},
+            }
+        self.calls += 1
+        return {
+            "id": f"chatcmpl-{self.calls}",
+            "object": "chat.completion",
+            "model": payload.get("model", "test-model"),
+            "choices": [
+                {"index": 0, "message": {"role": "assistant", "content": f"answer {self.calls}"}, "finish_reason": "stop"}
+            ],
+            "usage": {"prompt_tokens": 12, "completion_tokens": 4, "total_tokens": 16},
+        }
+
+
+def test_hamming_rerank_rejects_mismatched_candidate():
+    """hamming_rerank=True asks the upstream model to confirm a hamming_nn candidate before serving it."""
+    upstream = JudgingUpstream(verdict="NO")
+    proxy = LatticeLLMProxy(
+        upstream_url="https://example.test/v1/chat/completions",
+        encoder=HashEncoder(384),
+        d_model=384,
+        upstream_client=upstream,
+        enable_hamming_router=True,
+        hamming_threshold=128,
+        hamming_rerank=True,
+    )
+    client = TestClient(proxy.create_app())
+
+    client.post("/v1/chat/completions", json=_request("What is the capital of France?"))
+    res = client.post("/v1/chat/completions", json=_request("How do I reset my router?"))
+
+    assert res.headers["X-Lattice-Cache"] == "MISS"
+    assert res.headers["X-Lattice-Retrieval-Path"] == "hamming_rerank_rejected_miss"
+    assert res.headers["X-Lattice-Rerank-Rejected"] == "true"
+    assert upstream.judge_calls == 1
+    assert upstream.calls == 2  # seed put + real generation after rejection
+
+
+def test_hamming_rerank_confirms_matching_candidate():
+    """A confirmed candidate still serves as a normal hamming_nn hit, no extra upstream generation call."""
+    upstream = JudgingUpstream(verdict="YES")
+    proxy = LatticeLLMProxy(
+        upstream_url="https://example.test/v1/chat/completions",
+        encoder=HashEncoder(384),
+        d_model=384,
+        upstream_client=upstream,
+        enable_hamming_router=True,
+        hamming_threshold=128,
+        hamming_rerank=True,
+    )
+    client = TestClient(proxy.create_app())
+
+    client.post("/v1/chat/completions", json=_request("What is the capital of France?"))
+    res = client.post("/v1/chat/completions", json=_request("Which city is France's capital?"))
+
+    assert res.headers["X-Lattice-Cache"] == "HIT"
+    assert res.headers["X-Lattice-Retrieval-Path"] == "hamming_nn"
+    assert upstream.judge_calls == 1
+    assert upstream.calls == 1  # only the original seed put, no second generation call
+
+
+def test_hamming_rerank_fails_closed_when_judge_call_errors():
+    """If the judge call itself fails, don't trust the unverifiable candidate -- treat as a miss."""
+
+    @dataclass
+    class ErroringJudgeUpstream:
+        calls: int = 0
+
+        async def __call__(self, payload, headers):
+            messages = payload.get("messages", [])
+            content = messages[-1]["content"] if messages else ""
+            if "YES or NO" in content:
+                raise RuntimeError("judge upstream unavailable")
+            self.calls += 1
+            return {
+                "id": f"chatcmpl-{self.calls}",
+                "object": "chat.completion",
+                "model": payload.get("model", "test-model"),
+                "choices": [
+                    {"index": 0, "message": {"role": "assistant", "content": f"answer {self.calls}"}, "finish_reason": "stop"}
+                ],
+                "usage": {"prompt_tokens": 12, "completion_tokens": 4, "total_tokens": 16},
+            }
+
+    upstream = ErroringJudgeUpstream()
+    proxy = LatticeLLMProxy(
+        upstream_url="https://example.test/v1/chat/completions",
+        encoder=HashEncoder(384),
+        d_model=384,
+        upstream_client=upstream,
+        enable_hamming_router=True,
+        hamming_threshold=128,
+        hamming_rerank=True,
+    )
+    client = TestClient(proxy.create_app())
+
+    client.post("/v1/chat/completions", json=_request("What is the capital of France?"))
+    res = client.post("/v1/chat/completions", json=_request("How do I reset my router?"))
+
+    assert res.headers["X-Lattice-Cache"] == "MISS"
+    assert res.headers["X-Lattice-Retrieval-Path"] == "hamming_rerank_rejected_miss"
+
+
+def test_hamming_rerank_disabled_by_default_skips_judge_call():
+    """hamming_rerank defaults to False -- existing hamming_nn behavior is unchanged."""
+    upstream = JudgingUpstream(verdict="NO")  # would reject if consulted
+    proxy = LatticeLLMProxy(
+        upstream_url="https://example.test/v1/chat/completions",
+        encoder=HashEncoder(384),
+        d_model=384,
+        upstream_client=upstream,
+        enable_hamming_router=True,
+        hamming_threshold=128,
+    )
+    client = TestClient(proxy.create_app())
+
+    client.post("/v1/chat/completions", json=_request("What is the capital of France?"))
+    res = client.post("/v1/chat/completions", json=_request("Which city is France's capital?"))
+
+    assert res.headers["X-Lattice-Cache"] == "HIT"
+    assert res.headers["X-Lattice-Retrieval-Path"] == "hamming_nn"
+    assert upstream.judge_calls == 0
+
+
 def test_hamming_router_enabled_returns_hamming_nn_hit():
     """With enable_hamming_router=True and threshold=128, any stored entry matches any query."""
     upstream = FakeUpstream()
