@@ -387,3 +387,54 @@ def test_calibrate_threshold_rejects_empty_pair_sets(router):
         router.calibrate_threshold([], _DISTINCT_NEAR_MISS_PAIRS)
     with pytest.raises(ValueError, match="near_miss_pairs"):
         router.calibrate_threshold(_IDENTICAL_PARAPHRASE_PAIRS, [])
+
+
+# ---------------------------------------------------------------------------
+# cosine calibration
+# ---------------------------------------------------------------------------
+
+
+class CosineFixtureEncoder:
+    def encode(self, sentences, **kwargs):
+        vectors = []
+        for sentence in sentences:
+            text = str(sentence).lower()
+            if "paraphrase" in text or "same" in text:
+                vector = np.array([1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32)
+            elif "near" in text:
+                vector = np.array([0.4, 0.916515, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32)
+            else:
+                vector = np.array([0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32)
+            vector /= np.linalg.norm(vector) + 1e-9
+            vectors.append(vector)
+        return np.stack(vectors)
+
+
+def test_cosine_gap_stats_returns_positive_gap():
+    router = HammingRouter(encoder=CosineFixtureEncoder(), d_model=8)
+
+    result = router.cosine_gap_stats(
+        [("same canonical", "same paraphrase")],
+        [("same canonical", "near miss")],
+    )
+
+    assert result["paraphrase"]["min"] == pytest.approx(1.0)
+    assert result["near_miss"]["max"] == pytest.approx(0.4, abs=1e-5)
+    assert result["gap"] > 0.5
+    assert result["n_paraphrase_pairs"] == 1
+    assert result["n_near_miss_pairs"] == 1
+
+
+def test_calibrate_cosine_threshold_satisfies_fp_budget():
+    router = HammingRouter(encoder=CosineFixtureEncoder(), d_model=8)
+
+    result = router.calibrate_cosine_threshold(
+        [("same canonical", "same paraphrase")],
+        [("same canonical", "near miss")],
+        fp_budget=0.0,
+    )
+
+    assert result["threshold"] > 0.4
+    assert result["threshold"] <= 1.0
+    assert result["recall"] == 1.0
+    assert result["fp_rate"] == 0.0

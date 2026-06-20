@@ -74,6 +74,11 @@ class LatticeLLMProxy:
         # docs/manual-results/2026-06-19-hamming-rerank-fix-verified.md).
         # Point this at a small, fast, non-reasoning model instead.
         hamming_rerank_model: str | None = None,
+        # Cheap raw-embedding cosine gate for hamming_nn candidates. Runs before
+        # hamming_rerank when both are enabled. It rejects low-cosine Hamming hits
+        # without an LLM round trip and fails closed on any encoder error.
+        hamming_cosine_gate: bool = False,
+        hamming_cosine_threshold: float = 0.9,
         calibration_data_path: str | None = None,
         fp_budget: float = 0.0,
         require_calibration: bool = False,
@@ -97,6 +102,8 @@ class LatticeLLMProxy:
         self.upstream_client = upstream_client
         self.hamming_rerank = hamming_rerank
         self.hamming_rerank_model = hamming_rerank_model
+        self.hamming_cosine_gate = hamming_cosine_gate
+        self.hamming_cosine_threshold = float(hamming_cosine_threshold)
         self.cost_per_1k_input_tokens_usd = float(cost_per_1k_input_tokens_usd)
         self.batch_size = int(batch_size)
         
@@ -454,6 +461,23 @@ class LatticeLLMProxy:
             key_hex = cached.lattice_key.hex() if cached.lattice_key else "unknown"
 
             rerank_rejected = False
+            cosine_gate_rejected = False
+            hamming_cosine_score: float | None = None
+            if cached.hit and cached.retrieval_path == "hamming_nn" and proxy.hamming_cosine_gate:
+                confirmed, hamming_cosine_score = proxy._cosine_gate_confirms_match(
+                    prompt, cached.source_prompt or ""
+                )
+                if not confirmed:
+                    cosine_gate_rejected = True
+                    cached = dataclasses.replace(
+                        cached,
+                        hit=False,
+                        shadow_hit=True,
+                        shadow_cache_id=cached.cache_id,
+                        shadow_hamming_distance=cached.hamming_distance,
+                        shadow_source_prompt=cached.source_prompt,
+                        shadow_value=cached.value,
+                    )
             if cached.hit and cached.retrieval_path == "hamming_nn" and proxy.hamming_rerank:
                 confirmed = await proxy._rerank_confirms_match(
                     proxy.hamming_rerank_model or payload.get("model"), prompt, cached.source_prompt or ""
@@ -490,6 +514,8 @@ class LatticeLLMProxy:
                         "X-Lattice-Compliance": "APPROVED" if proxy.compliance_mode else "NONE",
                         "X-Lattice-Audit-Hash": evt["hash"],
                     }
+                    if hamming_cosine_score is not None:
+                        headers["X-Lattice-Hamming-Cosine"] = f"{hamming_cosine_score:.6f}"
                     return _StreamingResponse(
                         proxy._cached_body_as_sse(cached.value, prompt),
                         media_type="text/event-stream",
@@ -619,19 +645,27 @@ class LatticeLLMProxy:
                     "X-Lattice-Audit-Hash": evt["hash"],
                     "X-Lattice-Hamming-Distance": str(cached.hamming_distance),
                 }
+                if hamming_cosine_score is not None:
+                    headers["X-Lattice-Hamming-Cosine"] = f"{hamming_cosine_score:.6f}"
                 return JSONResponse(content=cached.value, headers=headers)
 
             # Absolute Cache Miss or Shadow Hit
             if cached.shadow_hit:
                 # Log the shadow hit event in the audit trail but do not serve it
                 proxy._log_audit_event(
-                    event_type="RERANK_REJECTED" if rerank_rejected else "SHADOW_HIT",
+                    event_type=(
+                        "COSINE_GATE_REJECTED"
+                        if cosine_gate_rejected
+                        else "RERANK_REJECTED" if rerank_rejected else "SHADOW_HIT"
+                    ),
                     prompt=prompt,
                     key_hex=key_hex,
                     response_text=proxy._extract_response_text(cached.shadow_value),
                     extra={
                         "hamming_distance": cached.shadow_hamming_distance,
                         "threshold": proxy.cache._hamming_threshold,
+                        "hamming_cosine": hamming_cosine_score,
+                        "hamming_cosine_threshold": proxy.hamming_cosine_threshold,
                     }
                 )
 
@@ -664,7 +698,9 @@ class LatticeLLMProxy:
                     nearest_cache_distance=cached.shadow_hamming_distance if cached.shadow_hit else -1,
                 )
 
-            if rerank_rejected:
+            if cosine_gate_rejected:
+                retrieval_path = "hamming_cosine_rejected_miss"
+            elif rerank_rejected:
                 retrieval_path = "hamming_rerank_rejected_miss"
             elif cached.shadow_hit:
                 retrieval_path = "shadow_match_miss"
@@ -683,6 +719,10 @@ class LatticeLLMProxy:
                 headers["X-Lattice-Shadow-Distance"] = str(cached.shadow_shadow_hamming_distance if hasattr(cached, "shadow_shadow_hamming_distance") else cached.shadow_hamming_distance)
             if rerank_rejected:
                 headers["X-Lattice-Rerank-Rejected"] = "true"
+            if cosine_gate_rejected:
+                headers["X-Lattice-Cosine-Gate-Rejected"] = "true"
+            if hamming_cosine_score is not None:
+                headers["X-Lattice-Hamming-Cosine"] = f"{hamming_cosine_score:.6f}"
             return JSONResponse(content=upstream_body, headers=headers)
 
         @app.post("/v1/compliance/validate")
@@ -1184,6 +1224,26 @@ class LatticeLLMProxy:
             return False
         tokens = re.findall(r"[A-Za-z]+", verdict)
         return bool(tokens and tokens[0].upper() == "YES")
+
+    def _cosine_gate_confirms_match(self, new_prompt: str, cached_prompt: str) -> tuple[bool, float | None]:
+        """Check raw-embedding cosine before trusting a hamming_nn candidate.
+
+        Fails closed: missing prompts or encoder errors reject the hamming candidate
+        and fall through to real generation.
+        """
+        if not new_prompt or not cached_prompt:
+            return False, None
+        try:
+            import torch
+            import torch.nn.functional as F
+
+            embeddings = self.cache.runtime._encode_texts([new_prompt, cached_prompt])
+            a = F.normalize(torch.as_tensor(embeddings[0], dtype=torch.float32), p=2, dim=0)
+            b = F.normalize(torch.as_tensor(embeddings[1], dtype=torch.float32), p=2, dim=0)
+            score = float(torch.dot(a, b).item())
+        except Exception:
+            return False, None
+        return score >= self.hamming_cosine_threshold, score
 
     def _estimate_savings(self, cached_value: Any, prompt: str) -> float:
         prompt_tokens = 0

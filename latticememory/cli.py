@@ -448,6 +448,10 @@ def cmd_serve(args: argparse.Namespace) -> int:
         os.environ["LATTICE_HAMMING_RERANK"] = "true"
     if args.hamming_rerank_model:
         os.environ["LATTICE_HAMMING_RERANK_MODEL"] = args.hamming_rerank_model
+    if getattr(args, "hamming_cosine_gate", False):
+        os.environ["LATTICE_HAMMING_COSINE_GATE"] = "true"
+    if getattr(args, "hamming_cosine_threshold", None) is not None:
+        os.environ["LATTICE_HAMMING_COSINE_THRESHOLD"] = str(args.hamming_cosine_threshold)
     if args.warm_path:
         os.environ["LATTICE_WARM_PATH"] = args.warm_path
     if args.admin_key:
@@ -963,6 +967,8 @@ def main() -> int:
     p_srv.add_argument("--hamming-mode", default=None,    help="serve | shadow | off")
     p_srv.add_argument("--hamming-rerank", action="store_true", help="LLM second-pass check on hamming_nn candidates before serving (off by default)")
     p_srv.add_argument("--hamming-rerank-model", default=None, help="Dedicated judge model for --hamming-rerank, distinct from the chat model. Use a small, fast, non-reasoning model -- a reasoning model can spend its whole token budget reasoning and never produce a verdict.")
+    p_srv.add_argument("--hamming-cosine-gate", action="store_true", help="Raw-embedding cosine gate on hamming_nn candidates before serving (off by default)")
+    p_srv.add_argument("--hamming-cosine-threshold", type=float, default=None, help="Cosine threshold for --hamming-cosine-gate; calibrate from paraphrase/near-miss pairs before deployment")
     p_srv.add_argument("--warm-path",    default=None,    help="CSV/JSON/JSONL file to pre-warm cache at startup")
     p_srv.add_argument("--admin-key",    default=None,    help="Secret key required for /v1/cache mutations")
     p_srv.add_argument("--host",         default="0.0.0.0")

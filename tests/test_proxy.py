@@ -504,6 +504,83 @@ def test_hamming_rerank_falls_back_to_request_model_when_unconfigured():
     assert upstream.judge_models == ["request-model-v9"]
 
 
+def test_hamming_cosine_gate_rejects_before_llm_rerank():
+    """Cosine gate rejects same-Hamming, low-cosine candidates before the slower LLM judge runs."""
+    upstream = JudgingUpstream(verdict="YES")
+    proxy = LatticeLLMProxy(
+        upstream_url="https://example.test/v1/chat/completions",
+        encoder=HashEncoder(384),
+        d_model=384,
+        upstream_client=upstream,
+        enable_hamming_router=True,
+        hamming_threshold=128,
+        hamming_cosine_gate=True,
+        hamming_cosine_threshold=0.8,
+        hamming_rerank=True,
+    )
+    proxy._cosine_gate_confirms_match = lambda new_prompt, cached_prompt: (False, 0.2)
+    client = TestClient(proxy.create_app())
+
+    client.post("/v1/chat/completions", json=_request("What is the capital of France?"))
+    res = client.post("/v1/chat/completions", json=_request("How do I reset my router?"))
+
+    assert res.headers["X-Lattice-Cache"] == "MISS"
+    assert res.headers["X-Lattice-Retrieval-Path"] == "hamming_cosine_rejected_miss"
+    assert res.headers["X-Lattice-Cosine-Gate-Rejected"] == "true"
+    assert float(res.headers["X-Lattice-Hamming-Cosine"]) < 0.8
+    assert upstream.judge_calls == 0
+    assert upstream.calls == 2
+
+
+def test_hamming_cosine_gate_confirms_matching_candidate():
+    upstream = JudgingUpstream(verdict="NO")
+    proxy = LatticeLLMProxy(
+        upstream_url="https://example.test/v1/chat/completions",
+        encoder=HashEncoder(384),
+        d_model=384,
+        upstream_client=upstream,
+        enable_hamming_router=True,
+        hamming_threshold=128,
+        hamming_cosine_gate=True,
+        hamming_cosine_threshold=0.8,
+    )
+    proxy._cosine_gate_confirms_match = lambda new_prompt, cached_prompt: (True, 0.95)
+    client = TestClient(proxy.create_app())
+
+    client.post("/v1/chat/completions", json=_request("What is the capital of France?"))
+    res = client.post("/v1/chat/completions", json=_request("Which city is France's capital?"))
+
+    assert res.headers["X-Lattice-Cache"] == "HIT"
+    assert res.headers["X-Lattice-Retrieval-Path"] == "hamming_nn"
+    assert float(res.headers["X-Lattice-Hamming-Cosine"]) >= 0.8
+    assert upstream.judge_calls == 0
+    assert upstream.calls == 1
+
+
+def test_hamming_cosine_gate_fails_closed_when_encoder_errors():
+    upstream = FakeUpstream()
+    proxy = LatticeLLMProxy(
+        upstream_url="https://example.test/v1/chat/completions",
+        encoder=HashEncoder(384),
+        d_model=384,
+        upstream_client=upstream,
+        enable_hamming_router=True,
+        hamming_threshold=128,
+        hamming_cosine_gate=True,
+        hamming_cosine_threshold=0.8,
+    )
+    proxy._cosine_gate_confirms_match = lambda new_prompt, cached_prompt: (False, None)
+    client = TestClient(proxy.create_app())
+
+    client.post("/v1/chat/completions", json=_request("What is the capital of France?"))
+    res = client.post("/v1/chat/completions", json=_request("Which city is France's capital?"))
+
+    assert res.headers["X-Lattice-Cache"] == "MISS"
+    assert res.headers["X-Lattice-Retrieval-Path"] == "hamming_cosine_rejected_miss"
+    assert res.headers["X-Lattice-Cosine-Gate-Rejected"] == "true"
+    assert upstream.calls == 2
+
+
 def test_hamming_router_enabled_returns_hamming_nn_hit():
     """With enable_hamming_router=True and threshold=128, any stored entry matches any query."""
     upstream = FakeUpstream()
@@ -1139,3 +1216,58 @@ def test_cache_list_open_when_no_admin_key_configured():
     client.post("/v1/chat/completions", json=_request("What is entropy?"))
     res = client.get("/v1/cache")
     assert res.status_code == 200
+
+
+def test_proxy_server_reads_hamming_cosine_gate_env(monkeypatch):
+    """proxy_server.py should expose cosine gate env config like hamming_rerank."""
+    import importlib
+    import sys
+
+    for mod_name in list(sys.modules):
+        if "latticememory.proxy_server" in mod_name:
+            del sys.modules[mod_name]
+    monkeypatch.setenv("LATTICE_HAMMING_COSINE_GATE", "true")
+    monkeypatch.setenv("LATTICE_HAMMING_COSINE_THRESHOLD", "0.83")
+    monkeypatch.setenv("LATTICE_HAMMING_MODE", "off")
+
+    ps = importlib.import_module("latticememory.proxy_server")
+
+    assert ps.proxy.hamming_cosine_gate is True
+    assert ps.proxy.hamming_cosine_threshold == 0.83
+
+
+def test_cmd_serve_sets_hamming_cosine_gate_env(monkeypatch):
+    import argparse
+    import os
+    import sys
+    import types
+
+    from latticememory.cli import cmd_serve
+
+    run_calls = []
+    monkeypatch.setitem(
+        sys.modules,
+        "uvicorn",
+        types.SimpleNamespace(run=lambda *args, **kwargs: run_calls.append((args, kwargs))),
+    )
+    args = argparse.Namespace(
+        key=None,
+        upstream=None,
+        cache=None,
+        miss_log=None,
+        hamming_mode=None,
+        hamming_rerank=False,
+        hamming_rerank_model=None,
+        hamming_cosine_gate=True,
+        hamming_cosine_threshold=0.83,
+        warm_path=None,
+        admin_key=None,
+        host="127.0.0.1",
+        port=8024,
+        workers=1,
+    )
+
+    assert cmd_serve(args) == 0
+    assert os.environ["LATTICE_HAMMING_COSINE_GATE"] == "true"
+    assert os.environ["LATTICE_HAMMING_COSINE_THRESHOLD"] == "0.83"
+    assert run_calls

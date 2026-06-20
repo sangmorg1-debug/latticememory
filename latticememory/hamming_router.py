@@ -281,6 +281,28 @@ class HammingRouter:
         keys = [self._emb_to_key_arr(e) for e in embs]
         return [int(np.sum(keys[2 * i] != keys[2 * i + 1])) for i in range(len(pairs))]
 
+    def _batch_pair_cosine(self, pairs: list[tuple[str, str]]) -> list[float]:
+        """Batch-encode text pairs; return per-pair raw-embedding cosine similarity."""
+        if not pairs:
+            return []
+        flat = [text for pair in pairs for text in pair]
+        embs = np.asarray(self._encoder.encode(flat, normalize_embeddings=True), dtype=np.float32)
+        norms = np.linalg.norm(embs, axis=1, keepdims=True) + 1e-9
+        embs = embs / norms
+        return [float(np.dot(embs[2 * i], embs[2 * i + 1])) for i in range(len(pairs))]
+
+    @staticmethod
+    def _cosine_dist_stats(scores: list[float]) -> dict:
+        arr = np.array(scores, dtype=float)
+        return {
+            "n": len(scores),
+            "min": float(arr.min()),
+            "p5": float(np.percentile(arr, 5)),
+            "mean": round(float(arr.mean()), 4),
+            "p95": float(np.percentile(arr, 95)),
+            "max": float(arr.max()),
+        }
+
     def gap_stats(
         self,
         paraphrase_pairs: list[tuple[str, str]],
@@ -341,6 +363,49 @@ class HammingRouter:
             "n_near_miss_pairs": len(nm_dists),
         }
 
+    def cosine_gap_stats(
+        self,
+        paraphrase_pairs: list[tuple[str, str]],
+        near_miss_pairs: list[tuple[str, str]],
+    ) -> dict:
+        """Measure raw-embedding cosine separation between paraphrase and near-miss pairs.
+
+        ``gap = paraphrase_p5 - near_miss_p95``. A positive gap means a cosine
+        threshold exists where near misses can be rejected while retaining useful
+        paraphrase recall. Unlike Hamming distance, higher cosine means more
+        similar, so threshold tables use ``score >= threshold`` as the hit rule.
+        """
+        if not paraphrase_pairs:
+            raise ValueError("paraphrase_pairs must not be empty")
+        if not near_miss_pairs:
+            raise ValueError("near_miss_pairs must not be empty")
+
+        para_scores = self._batch_pair_cosine(paraphrase_pairs)
+        nm_scores = self._batch_pair_cosine(near_miss_pairs)
+        para_s = self._cosine_dist_stats(para_scores)
+        nm_s = self._cosine_dist_stats(nm_scores)
+        gap = para_s["p5"] - nm_s["p95"]
+
+        thresholds = [round(t / 20.0, 2) for t in range(0, 21)]
+        threshold_table = []
+        for t in thresholds:
+            tp = sum(1 for score in para_scores if score >= t)
+            fp = sum(1 for score in nm_scores if score >= t)
+            threshold_table.append({
+                "threshold": t,
+                "recall": round(tp / len(para_scores), 3) if para_scores else 0.0,
+                "fp_rate": round(fp / len(nm_scores), 3) if nm_scores else 0.0,
+            })
+
+        return {
+            "paraphrase": para_s,
+            "near_miss": nm_s,
+            "gap": round(gap, 4),
+            "threshold_table": threshold_table,
+            "n_paraphrase_pairs": len(para_scores),
+            "n_near_miss_pairs": len(nm_scores),
+        }
+
     def calibrate_threshold(
         self,
         paraphrase_pairs: list[tuple[str, str]],
@@ -387,6 +452,49 @@ class HammingRouter:
 
         return {
             "threshold": best_threshold,
+            "recall": round(best_recall, 4),
+            "fp_rate": round(best_fp_rate, 4),
+            "fp_budget": fp_budget,
+            "n_paraphrase_pairs": len(paraphrase_pairs),
+            "n_near_miss_pairs": len(near_miss_pairs),
+        }
+
+    def calibrate_cosine_threshold(
+        self,
+        paraphrase_pairs: list[tuple[str, str]],
+        near_miss_pairs: list[tuple[str, str]],
+        *,
+        fp_budget: float = 0.0,
+    ) -> dict:
+        """Find the highest-recall cosine threshold where FP rate is within budget."""
+        if not paraphrase_pairs:
+            raise ValueError("paraphrase_pairs must not be empty")
+        if not near_miss_pairs:
+            raise ValueError("near_miss_pairs must not be empty")
+
+        para_scores = sorted(self._batch_pair_cosine(paraphrase_pairs))
+        nm_scores = sorted(self._batch_pair_cosine(near_miss_pairs))
+        candidates = sorted(
+            set([-1.0, 1.0] + para_scores + nm_scores + [min(1.0, max(nm_scores) + 1e-6)])
+        )
+        best_threshold = 1.000001
+        best_recall = 0.0
+        best_fp_rate = 0.0
+
+        for threshold in candidates:
+            fp = sum(1 for score in nm_scores if score >= threshold)
+            fp_rate = fp / len(nm_scores)
+            if fp_rate > fp_budget:
+                continue
+            tp = sum(1 for score in para_scores if score >= threshold)
+            recall = tp / len(para_scores)
+            if recall > best_recall or (recall == best_recall and threshold < best_threshold):
+                best_threshold = threshold
+                best_recall = recall
+                best_fp_rate = fp_rate
+
+        return {
+            "threshold": round(float(best_threshold), 6),
             "recall": round(best_recall, 4),
             "fp_rate": round(best_fp_rate, 4),
             "fp_budget": fp_budget,

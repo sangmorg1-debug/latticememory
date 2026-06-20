@@ -22,6 +22,8 @@ fp_budget = float(os.getenv("LATTICE_FP_BUDGET", "0.0"))
 calibration_data_path = os.getenv("LATTICE_CALIBRATION_DATA_PATH", None)
 hamming_rerank = os.getenv("LATTICE_HAMMING_RERANK", "false").lower() == "true"
 hamming_rerank_model = os.getenv("LATTICE_HAMMING_RERANK_MODEL", None)
+hamming_cosine_gate = os.getenv("LATTICE_HAMMING_COSINE_GATE", "false").lower() == "true"
+hamming_cosine_threshold = float(os.getenv("LATTICE_HAMMING_COSINE_THRESHOLD", "0.9"))
 miss_log_path = os.getenv("LATTICE_MISS_LOG_PATH", None)
 warm_path     = os.getenv("LATTICE_WARM_PATH", None)
 admin_key     = os.getenv("LATTICE_ADMIN_KEY", None)
@@ -56,6 +58,8 @@ proxy = LatticeLLMProxy(
     calibration_data_path=calibration_data_path,
     hamming_rerank=hamming_rerank,
     hamming_rerank_model=hamming_rerank_model,
+    hamming_cosine_gate=hamming_cosine_gate,
+    hamming_cosine_threshold=hamming_cosine_threshold,
     miss_log_path=miss_log_path,
     warm_path=warm_path,
     admin_key=admin_key,
