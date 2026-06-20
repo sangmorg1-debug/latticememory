@@ -193,6 +193,19 @@ Point your OpenAI client at `http://localhost:8000` — no other code changes ne
 - Admin CRUD API gated by `X-Lattice-Admin-Key`
 - Warm-start from CSV/JSON/JSONL
 
+**Running `--hamming-mode serve` in production:** also pass `--hamming-rerank
+--hamming-rerank-model qwen2.5:1.5b` (or another small, fast, non-reasoning
+model). The Hamming router's distance threshold cannot separate genuine
+paraphrases from same-template/different-topic queries — adversarial
+"template mimicry" inputs land inside the paraphrase distance range
+regardless of calibration and get served the wrong cached answer. `--hamming-
+rerank` adds an LLM judge second-pass check before any `hamming_nn` hit is
+served, and fails closed (falls through to a real upstream call) on any
+judge error or non-YES verdict. Use a dedicated non-reasoning judge model via
+`--hamming-rerank-model`: a reasoning model given a tight token budget can
+spend its whole budget "thinking" and never emit a visible verdict, which
+silently disables the check. See `lattice serve --help` for both flags.
+
 ---
 
 ## LangChain Integration
