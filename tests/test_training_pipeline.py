@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import torch
 
+from latticememory.dual_encoder import LatticeDualEncoder
 from latticememory.training import (
     E8RoutingLoss,
     RoutingTrainingExample,
@@ -10,6 +11,7 @@ from latticememory.training import (
     _move_features_to_device,
     build_canonical_cluster_examples,
     build_msmarco_examples,
+    evaluate_adversarial_negatives,
     evaluate_routing_examples,
     load_sts_examples,
     train_and_evaluate_msmarco,
@@ -353,6 +355,84 @@ def test_train_and_evaluate_examples_reports_lattice_routes():
     assert metrics["unique_document_keys"] >= 1
     assert metrics["max_documents_per_key"] >= 1
     assert metrics["documents_in_collision_keys"] >= metrics["collision_key_count"]
+
+
+class FixedVectorEncoder:
+    """Maps known strings to caller-chosen fixed vectors, for deterministic E8 key control."""
+
+    def __init__(self, vectors: dict[str, torch.Tensor]):
+        self.d_model = next(iter(vectors.values())).shape[0]
+        self._vectors = vectors
+
+    def encode(self, sentences, batch_size: int = 64, **kwargs):
+        if isinstance(sentences, str):
+            sentences = [sentences]
+        return torch.stack([self._vectors[str(text)] for text in sentences]).numpy()
+
+
+def test_evaluate_adversarial_negatives_reports_false_accept_rate():
+    torch.manual_seed(0)
+    positive_a = torch.randn(16)
+    positive_b = torch.randn(16) * -1
+    encoder = FixedVectorEncoder(
+        {
+            "doc a": positive_a,
+            "doc b": positive_b,
+            # identical embedding to "doc a" -> guaranteed same E8 key -> false accept
+            "mimic of a": positive_a.clone(),
+            # identical embedding to "doc b" -> guaranteed same E8 key -> false accept
+            "mimic of b": positive_b.clone(),
+            "unrelated query": torch.randn(16) * 5,
+        }
+    )
+    dual_encoder = LatticeDualEncoder(
+        document_encoder=encoder, query_encoder=encoder, d_model=16, training_pairs=0, ridge=0.0
+    )
+    examples = [
+        RoutingTrainingExample("query a", "doc a", ["mimic of a", "unrelated query"]),
+        RoutingTrainingExample("query b", "doc b", ["mimic of b"]),
+    ]
+
+    metrics = evaluate_adversarial_negatives(dual_encoder, examples, threshold=0)
+
+    assert metrics["total_negatives"] == 3
+    assert metrics["false_accepts"] == 2
+    assert metrics["false_accept_rate"] == 2 / 3
+    mimic_rows = {row["negative"]: row for row in metrics["rows"]}
+    assert mimic_rows["mimic of a"]["false_accept"] is True
+    assert mimic_rows["mimic of a"]["hamming_distance"] == 0
+    assert mimic_rows["unrelated query"]["false_accept"] is False
+
+
+def test_train_lattice_adapter_from_examples_forwards_hard_negative_radius_and_k():
+    torch.manual_seed(0)
+    positive_a = torch.randn(24)
+    encoder = FixedVectorEncoder(
+        {
+            "doc a": positive_a,
+            "query a": positive_a.clone(),
+            # negating every dim flips the codeword choice in all 3 blocks (d_model=24),
+            # landing at Hamming distance 3 -- outside the library's default radius=2.
+            "far mimic of a": positive_a.clone() * -1,
+        }
+    )
+    examples = [RoutingTrainingExample("query a", "doc a", ["far mimic of a"])]
+
+    default_result = train_lattice_adapter_from_examples(
+        base_encoder=encoder, examples=examples, d_model=24, epochs=1, batch_size=1, device="cpu"
+    )
+    assert default_result.train_result.hard_negative_pairs == 0
+
+    widened_result = train_lattice_adapter_from_examples(
+        base_encoder=encoder,
+        examples=examples,
+        d_model=24,
+        epochs=1,
+        batch_size=1,
+        device="cpu",
+        hard_negative_radius=3,
+    )
+    assert widened_result.train_result.hard_negative_pairs == 1
 
 
 def test_training_records_sts_metrics_each_epoch():

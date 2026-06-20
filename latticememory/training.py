@@ -484,6 +484,8 @@ def train_lattice_adapter_from_examples(
     lambda_address: float = 1.0,
     lambda_neighborhood: float = 0.0,
     lambda_hard: float = 1.0,
+    hard_negative_k: int = 2,
+    hard_negative_radius: int = 2,
     adapter_kind: str = "residual_mlp",
     adapter_hidden_multiplier: float = 1.0,
     seed: int = 42,
@@ -522,6 +524,8 @@ def train_lattice_adapter_from_examples(
         lambda_address=lambda_address,
         lambda_neighborhood=lambda_neighborhood,
         lambda_hard=lambda_hard,
+        hard_negative_k=hard_negative_k,
+        hard_negative_radius=hard_negative_radius,
         adapter_kind=adapter_kind,
         adapter_hidden_multiplier=adapter_hidden_multiplier,
         seed=seed,
@@ -1102,6 +1106,59 @@ def train_and_evaluate_msmarco(
         metrics_path.write_text(json.dumps(result, indent=2, sort_keys=True), encoding="utf-8")
         result["metrics_path"] = str(metrics_path)
     return result
+
+
+def evaluate_adversarial_negatives(
+    dual_encoder: LatticeDualEncoder,
+    examples: Sequence[RoutingTrainingExample],
+    *,
+    threshold: int,
+) -> dict:
+    """Measure how often a known hard negative (adversarial near-miss query) would be
+    wrongly served the positive answer it mimics, at a given HammingRouter threshold.
+
+    Unlike evaluate_routing_examples (which measures whether a query correctly finds
+    its own positive), this measures the false-accept side: each example's negatives
+    are known-bad matches for that example's positive, so any negative whose E8 key
+    lands within `threshold` of the positive's key is a false accept the router would
+    actually serve in production.
+    """
+    positives = [example.positive for example in examples]
+    with torch.no_grad():
+        positive_embeddings = _encode_texts(dual_encoder.document_encoder, positives, batch_size=64)
+    db = E8LatticeDB(d_model=dual_encoder.d_model)
+    positive_keys = [bytes(db._quantize_to_indices(embedding)) for embedding in positive_embeddings]
+
+    rows: list[dict] = []
+    false_accepts = 0
+    total_negatives = 0
+    for example, positive_key in zip(examples, positive_keys):
+        if not example.negatives:
+            continue
+        with torch.no_grad():
+            negative_embeddings = _encode_texts(dual_encoder.query_encoder, example.negatives, batch_size=64)
+        for negative_text, negative_embedding in zip(example.negatives, negative_embeddings):
+            negative_key = bytes(db._quantize_to_indices(negative_embedding))
+            distance = _hamming_distance(positive_key, negative_key)
+            is_false_accept = distance <= threshold
+            total_negatives += 1
+            false_accepts += int(is_false_accept)
+            rows.append(
+                {
+                    "positive": example.positive,
+                    "negative": negative_text,
+                    "hamming_distance": distance,
+                    "false_accept": is_false_accept,
+                }
+            )
+
+    return {
+        "threshold": threshold,
+        "total_negatives": total_negatives,
+        "false_accepts": false_accepts,
+        "false_accept_rate": false_accepts / total_negatives if total_negatives else 0.0,
+        "rows": rows,
+    }
 
 
 def _examples_from_row(row: dict, *, min_negatives: int) -> list[RoutingTrainingExample]:
