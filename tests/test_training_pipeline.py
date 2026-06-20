@@ -12,6 +12,7 @@ from latticememory.training import (
     build_canonical_cluster_examples,
     build_msmarco_examples,
     evaluate_adversarial_negatives,
+    evaluate_recall_at_threshold,
     evaluate_routing_examples,
     load_sts_examples,
     train_and_evaluate_msmarco,
@@ -402,6 +403,40 @@ def test_evaluate_adversarial_negatives_reports_false_accept_rate():
     assert mimic_rows["mimic of a"]["false_accept"] is True
     assert mimic_rows["mimic of a"]["hamming_distance"] == 0
     assert mimic_rows["unrelated query"]["false_accept"] is False
+
+
+def test_evaluate_recall_at_threshold_reports_distance_based_recall():
+    torch.manual_seed(0)
+    positive_a = torch.randn(16)
+    # near-identical to its positive -> guaranteed within threshold=0
+    near_query = positive_a.clone()
+    near_query[0] += 1e-6
+    encoder = FixedVectorEncoder(
+        {
+            "doc a": positive_a,
+            "near query a": near_query,
+            "doc b": torch.randn(16) * -1,
+            # unrelated vector -> almost certainly outside threshold=0
+            "far query b": torch.randn(16) * 7,
+        }
+    )
+    dual_encoder = LatticeDualEncoder(
+        document_encoder=encoder, query_encoder=encoder, d_model=16, training_pairs=0, ridge=0.0
+    )
+    examples = [
+        RoutingTrainingExample("near query a", "doc a", []),
+        RoutingTrainingExample("far query b", "doc b", []),
+    ]
+
+    metrics = evaluate_recall_at_threshold(dual_encoder, examples, threshold=0)
+
+    assert metrics["total"] == 2
+    assert metrics["within_threshold"] == 1
+    assert metrics["recall_at_threshold"] == 0.5
+    rows = {row["query"]: row for row in metrics["rows"]}
+    assert rows["near query a"]["within_threshold"] is True
+    assert rows["near query a"]["hamming_distance"] == 0
+    assert rows["far query b"]["within_threshold"] is False
 
 
 def test_train_lattice_adapter_from_examples_forwards_hard_negative_radius_and_k():

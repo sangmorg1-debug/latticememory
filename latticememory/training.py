@@ -1108,6 +1108,51 @@ def train_and_evaluate_msmarco(
     return result
 
 
+def evaluate_recall_at_threshold(
+    dual_encoder: LatticeDualEncoder,
+    examples: Sequence[RoutingTrainingExample],
+    *,
+    threshold: int,
+) -> dict:
+    """Measure recall using the same distance<=threshold rule HammingRouter applies in
+    production, rather than evaluate_routing_examples' strict beam_radius=1 lattice
+    routing (which only succeeds at near-zero distance and under-reports recall for
+    adapters that haven't fully converged to exact address matches).
+    """
+    positives = [example.positive for example in examples]
+    queries = [example.query for example in examples]
+    with torch.no_grad():
+        positive_embeddings = _encode_texts(dual_encoder.document_encoder, positives, batch_size=64)
+        query_embeddings = _encode_texts(dual_encoder.query_encoder, queries, batch_size=64)
+    db = E8LatticeDB(d_model=dual_encoder.d_model)
+
+    rows: list[dict] = []
+    within_threshold = 0
+    for example, positive_embedding, query_embedding in zip(examples, positive_embeddings, query_embeddings):
+        positive_key = bytes(db._quantize_to_indices(positive_embedding))
+        query_key = bytes(db._quantize_to_indices(query_embedding))
+        distance = _hamming_distance(positive_key, query_key)
+        is_within = distance <= threshold
+        within_threshold += int(is_within)
+        rows.append(
+            {
+                "query": example.query,
+                "positive": example.positive,
+                "hamming_distance": distance,
+                "within_threshold": is_within,
+            }
+        )
+
+    total = len(examples)
+    return {
+        "threshold": threshold,
+        "total": total,
+        "within_threshold": within_threshold,
+        "recall_at_threshold": within_threshold / total if total else 0.0,
+        "rows": rows,
+    }
+
+
 def evaluate_adversarial_negatives(
     dual_encoder: LatticeDualEncoder,
     examples: Sequence[RoutingTrainingExample],
