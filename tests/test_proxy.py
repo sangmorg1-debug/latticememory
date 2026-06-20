@@ -1331,3 +1331,60 @@ def test_cmd_serve_sets_hamming_cosine_gate_env(monkeypatch):
     assert os.environ["LATTICE_HAMMING_COSINE_GATE"] == "true"
     assert os.environ["LATTICE_HAMMING_COSINE_THRESHOLD"] == "0.83"
     assert run_calls
+
+
+def test_proxy_server_reads_hamming_rerank_retry_env(monkeypatch):
+    """proxy_server.py should expose rerank retry config like hamming_rerank_model."""
+    import importlib
+    import sys
+
+    for mod_name in list(sys.modules):
+        if "latticememory.proxy_server" in mod_name:
+            del sys.modules[mod_name]
+    monkeypatch.setenv("LATTICE_HAMMING_RERANK_RETRIES", "3")
+    monkeypatch.setenv("LATTICE_HAMMING_RERANK_RETRY_DELAY", "1.5")
+    monkeypatch.setenv("LATTICE_HAMMING_MODE", "off")
+
+    ps = importlib.import_module("latticememory.proxy_server")
+
+    assert ps.proxy.hamming_rerank_retries == 3
+    assert ps.proxy.hamming_rerank_retry_delay == 1.5
+
+
+def test_cmd_serve_sets_hamming_rerank_retry_env(monkeypatch):
+    import argparse
+    import os
+    import sys
+    import types
+
+    from latticememory.cli import cmd_serve
+
+    run_calls = []
+    monkeypatch.setitem(
+        sys.modules,
+        "uvicorn",
+        types.SimpleNamespace(run=lambda *args, **kwargs: run_calls.append((args, kwargs))),
+    )
+    args = argparse.Namespace(
+        key=None,
+        upstream=None,
+        cache=None,
+        miss_log=None,
+        hamming_mode=None,
+        hamming_rerank=True,
+        hamming_rerank_model=None,
+        hamming_rerank_retries=3,
+        hamming_rerank_retry_delay=1.5,
+        hamming_cosine_gate=False,
+        hamming_cosine_threshold=None,
+        warm_path=None,
+        admin_key=None,
+        host="127.0.0.1",
+        port=8024,
+        workers=1,
+    )
+
+    assert cmd_serve(args) == 0
+    assert os.environ["LATTICE_HAMMING_RERANK_RETRIES"] == "3"
+    assert os.environ["LATTICE_HAMMING_RERANK_RETRY_DELAY"] == "1.5"
+    assert run_calls
