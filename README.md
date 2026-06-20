@@ -193,18 +193,33 @@ Point your OpenAI client at `http://localhost:8000` — no other code changes ne
 - Admin CRUD API gated by `X-Lattice-Admin-Key`
 - Warm-start from CSV/JSON/JSONL
 
-**Running `--hamming-mode serve` in production:** also pass `--hamming-rerank
---hamming-rerank-model qwen2.5:1.5b` (or another small, fast, non-reasoning
-model). The Hamming router's distance threshold cannot separate genuine
-paraphrases from same-template/different-topic queries — adversarial
-"template mimicry" inputs land inside the paraphrase distance range
-regardless of calibration and get served the wrong cached answer. `--hamming-
-rerank` adds an LLM judge second-pass check before any `hamming_nn` hit is
-served, and fails closed (falls through to a real upstream call) on any
-judge error or non-YES verdict. Use a dedicated non-reasoning judge model via
-`--hamming-rerank-model`: a reasoning model given a tight token budget can
-spend its whole budget "thinking" and never emit a visible verdict, which
-silently disables the check. See `lattice serve --help` for both flags.
+**Running `--hamming-mode serve` in production:** calibrate and enable the
+cheap cosine gate first, then use `--hamming-rerank` as the slower semantic
+backstop:
+
+```bash
+lattice calibrate --paraphrases paraphrases.txt --near-misses near_misses.txt \
+  --holdout-paraphrases holdout_paraphrases.txt --holdout-near-misses holdout_near_misses.txt \
+  --metric cosine --fp-budget 0
+
+lattice serve ... --hamming-mode serve \
+  --hamming-cosine-gate --hamming-cosine-threshold <calibrated-threshold> \
+  --hamming-rerank --hamming-rerank-model qwen2.5:1.5b
+```
+
+The Hamming router's distance threshold cannot separate genuine paraphrases
+from same-template/different-topic queries: adversarial "template mimicry"
+inputs land inside the paraphrase distance range regardless of Hamming
+calibration and can be served the wrong cached answer. `--hamming-cosine-gate`
+is the first line of defense because it is local, fast, and catches most of
+those candidates before an LLM call. It is not sufficient by itself: two
+synthetic domains still showed a small residual class of same-template,
+entity-substitution misses. `--hamming-rerank` is the second line of defense
+for that residual case, and fails closed (falls through to a real upstream
+call) on any judge error or non-YES verdict. Use a dedicated non-reasoning
+judge model via `--hamming-rerank-model`; a reasoning model given a tight token
+budget can spend its whole budget "thinking" and never emit a visible verdict,
+which silently disables the check. See `lattice serve --help` for all flags.
 
 ---
 
@@ -380,7 +395,7 @@ lattice drift --log misses.jsonl --window 604800 --export drift_report.json
 
 | Command | What it does |
 | --- | --- |
-| `lattice calibrate` | Calibrate a Hamming-distance or cosine threshold from labeled paraphrase/near-miss pairs, with optional `--holdout-*` pairs for genuine held-out evidence |
+| `lattice calibrate` | Calibrate a Hamming-distance or cosine threshold from labeled paraphrase/near-miss pairs using `--metric hamming\|cosine`, with optional `--holdout-paraphrases`/`--holdout-near-misses` pairs for genuine held-out evidence |
 | `lattice populate` | Load Q&A pairs from CSV/JSON into a SQLite cache |
 | `lattice inspect` | Print cache statistics |
 | `lattice export` | Export all cache entries to a portable JSONL file |

@@ -7,6 +7,7 @@ import inspect
 import logging
 import dataclasses
 import re
+import asyncio
 from collections.abc import Callable
 from importlib.metadata import PackageNotFoundError, version as package_version
 from typing import Any
@@ -36,6 +37,21 @@ def _require_fastapi():
 
 
 UpstreamClient = Callable[[dict[str, Any], dict[str, str]], Any]
+
+
+def _is_ollama_saturation_error(exc: Exception) -> bool:
+    """Return true for the specific Ollama overload error worth retrying."""
+    detail = getattr(exc, "detail", "")
+    status_code = getattr(exc, "status_code", None)
+    text = f"{exc} {detail}".casefold()
+    saturated = "maximum pending requests exceeded" in text
+    service_unavailable = (
+        status_code == 503
+        or "provider http 503" in text
+        or "http 503" in text
+        or "status_code=503" in text
+    )
+    return saturated and service_unavailable
 
 
 class LatticeLLMProxy:
@@ -74,6 +90,8 @@ class LatticeLLMProxy:
         # docs/manual-results/2026-06-19-hamming-rerank-fix-verified.md).
         # Point this at a small, fast, non-reasoning model instead.
         hamming_rerank_model: str | None = None,
+        hamming_rerank_retries: int = 1,
+        hamming_rerank_retry_delay: float = 0.25,
         # Cheap raw-embedding cosine gate for hamming_nn candidates. Runs before
         # hamming_rerank when both are enabled. It rejects low-cosine Hamming hits
         # without an LLM round trip and fails closed on any encoder error.
@@ -102,6 +120,8 @@ class LatticeLLMProxy:
         self.upstream_client = upstream_client
         self.hamming_rerank = hamming_rerank
         self.hamming_rerank_model = hamming_rerank_model
+        self.hamming_rerank_retries = max(0, int(hamming_rerank_retries))
+        self.hamming_rerank_retry_delay = max(0.0, float(hamming_rerank_retry_delay))
         self.hamming_cosine_gate = hamming_cosine_gate
         self.hamming_cosine_threshold = float(hamming_cosine_threshold)
         self.cost_per_1k_input_tokens_usd = float(cost_per_1k_input_tokens_usd)
@@ -1217,11 +1237,24 @@ class LatticeLLMProxy:
             "max_tokens": 5,
             "temperature": 0,
         }
-        try:
-            body = await self._call_upstream(judge_payload)
-            verdict = self._extract_response_text(body)
-        except Exception:
-            return False
+        attempts = self.hamming_rerank_retries + 1
+        for attempt in range(attempts):
+            try:
+                body = await self._call_upstream(judge_payload)
+                verdict = self._extract_response_text(body)
+                break
+            except Exception as exc:
+                if attempt + 1 < attempts and _is_ollama_saturation_error(exc):
+                    logger.warning(
+                        "hamming_rerank judge saturated; retrying attempt %s/%s",
+                        attempt + 2,
+                        attempts,
+                    )
+                    if self.hamming_rerank_retry_delay:
+                        await asyncio.sleep(self.hamming_rerank_retry_delay)
+                    continue
+                logger.warning("hamming_rerank judge call failed; rejecting candidate", exc_info=True)
+                return False
         tokens = re.findall(r"[A-Za-z]+", verdict)
         return bool(tokens and tokens[0].upper() == "YES")
 

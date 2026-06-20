@@ -387,17 +387,76 @@ def test_hamming_rerank_confirms_matching_candidate():
     assert upstream.calls == 1  # only the original seed put, no second generation call
 
 
+def test_hamming_rerank_retries_transient_ollama_saturation():
+    """Ollama saturation should get one bounded retry before fail-closed rejection."""
+
+    @dataclass
+    class SaturatingThenPassingJudgeUpstream:
+        calls: int = 0
+        judge_calls: int = 0
+
+        async def __call__(self, payload, headers):
+            messages = payload.get("messages", [])
+            content = messages[-1]["content"] if messages else ""
+            if "YES or NO" in content:
+                self.judge_calls += 1
+                if self.judge_calls == 1:
+                    raise RuntimeError("provider HTTP 503: maximum pending requests exceeded")
+                return {
+                    "id": f"chatcmpl-judge-{self.judge_calls}",
+                    "object": "chat.completion",
+                    "model": payload.get("model", "test-model"),
+                    "choices": [
+                        {"index": 0, "message": {"role": "assistant", "content": "YES"}, "finish_reason": "stop"}
+                    ],
+                    "usage": {"prompt_tokens": 5, "completion_tokens": 1, "total_tokens": 6},
+                }
+            self.calls += 1
+            return {
+                "id": f"chatcmpl-{self.calls}",
+                "object": "chat.completion",
+                "model": payload.get("model", "test-model"),
+                "choices": [
+                    {"index": 0, "message": {"role": "assistant", "content": f"answer {self.calls}"}, "finish_reason": "stop"}
+                ],
+                "usage": {"prompt_tokens": 12, "completion_tokens": 4, "total_tokens": 16},
+            }
+
+    upstream = SaturatingThenPassingJudgeUpstream()
+    proxy = LatticeLLMProxy(
+        upstream_url="https://example.test/v1/chat/completions",
+        encoder=HashEncoder(384),
+        d_model=384,
+        upstream_client=upstream,
+        enable_hamming_router=True,
+        hamming_threshold=128,
+        hamming_rerank=True,
+        hamming_rerank_retry_delay=0,
+    )
+    client = TestClient(proxy.create_app())
+
+    client.post("/v1/chat/completions", json=_request("What is the capital of France?"))
+    res = client.post("/v1/chat/completions", json=_request("Which city is France's capital?"))
+
+    assert res.headers["X-Lattice-Cache"] == "HIT"
+    assert res.headers["X-Lattice-Retrieval-Path"] == "hamming_nn"
+    assert upstream.judge_calls == 2
+    assert upstream.calls == 1
+
+
 def test_hamming_rerank_fails_closed_when_judge_call_errors():
     """If the judge call itself fails, don't trust the unverifiable candidate -- treat as a miss."""
 
     @dataclass
     class ErroringJudgeUpstream:
         calls: int = 0
+        judge_calls: int = 0
 
         async def __call__(self, payload, headers):
             messages = payload.get("messages", [])
             content = messages[-1]["content"] if messages else ""
             if "YES or NO" in content:
+                self.judge_calls += 1
                 raise RuntimeError("judge upstream unavailable")
             self.calls += 1
             return {
@@ -427,6 +486,7 @@ def test_hamming_rerank_fails_closed_when_judge_call_errors():
 
     assert res.headers["X-Lattice-Cache"] == "MISS"
     assert res.headers["X-Lattice-Retrieval-Path"] == "hamming_rerank_rejected_miss"
+    assert upstream.judge_calls == 1
 
 
 def test_hamming_rerank_disabled_by_default_skips_judge_call():
