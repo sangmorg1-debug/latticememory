@@ -185,3 +185,127 @@ def test_cmd_calibrate_empty_pairs_file_errors(tmp_path, capsys):
     )
     rc = cmd_calibrate(args)
     assert rc == 1
+
+
+def _calibrate_args(tmp_path, paraphrases, near_misses, **overrides):
+    defaults = dict(
+        paraphrases=str(paraphrases),
+        near_misses=str(near_misses),
+        encoder="fake-model",
+        fp_budget=0.0,
+        export=None,
+        metric="hamming",
+        holdout_paraphrases=None,
+        holdout_near_misses=None,
+    )
+    defaults.update(overrides)
+    return argparse.Namespace(**defaults)
+
+
+def test_cmd_calibrate_cosine_metric_prints_cosine_statistics(tmp_path, capsys):
+    from latticememory.cli import cmd_calibrate
+
+    paraphrases = tmp_path / "paraphrases.txt"
+    near_misses = tmp_path / "near_misses.txt"
+    _write_pairs(paraphrases, [(f"question {i}", f"question {i} restated") for i in range(20)])
+    _write_pairs(near_misses, [(f"topic {i} alpha", f"topic {i} beta") for i in range(20)])
+
+    args = _calibrate_args(tmp_path, paraphrases, near_misses, metric="cosine")
+    rc = cmd_calibrate(args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "COSINE SIMILARITY STATISTICS" in out
+    assert "HAMMING DISTANCE STATISTICS" not in out
+
+
+def test_cmd_calibrate_cosine_metric_exports_distinct_artifact_type(tmp_path, capsys):
+    from latticememory.cli import cmd_calibrate
+
+    paraphrases = tmp_path / "paraphrases.txt"
+    near_misses = tmp_path / "near_misses.txt"
+    _write_pairs(paraphrases, [(f"question {i}", f"question {i} restated") for i in range(20)])
+    _write_pairs(near_misses, [(f"topic {i} alpha", f"topic {i} beta") for i in range(20)])
+
+    export_path = tmp_path / "cosine_calibration.json"
+    args = _calibrate_args(tmp_path, paraphrases, near_misses, metric="cosine", export=str(export_path))
+    cmd_calibrate(args)
+
+    data = json.loads(export_path.read_text())
+    assert data["artifact_type"] == "latticememory_hamming_cosine_calibration"
+    assert data["metric"] == "cosine"
+    # Not the live-loadable Hamming schema -- there is no cosine-loading path yet.
+    from latticememory.hamming_router import validate_precalibrated_artifact_schema
+
+    with pytest.raises(ValueError):
+        validate_precalibrated_artifact_schema(data)
+
+
+def test_cmd_calibrate_without_holdout_prints_in_sample_warning(tmp_path, capsys):
+    from latticememory.cli import cmd_calibrate
+
+    paraphrases = tmp_path / "paraphrases.txt"
+    near_misses = tmp_path / "near_misses.txt"
+    _write_pairs(paraphrases, [(f"question {i}", f"question {i} restated") for i in range(20)])
+    _write_pairs(near_misses, [(f"topic {i} alpha", f"topic {i} beta") for i in range(20)])
+
+    args = _calibrate_args(tmp_path, paraphrases, near_misses)
+    rc = cmd_calibrate(args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "WARNING" in out
+    assert "in-sample" in out.lower()
+    assert "held-out" in out.lower() or "--holdout" in out
+
+
+def test_cmd_calibrate_with_holdout_reports_held_out_evaluation(tmp_path, capsys):
+    from latticememory.cli import cmd_calibrate
+
+    paraphrases = tmp_path / "paraphrases.txt"
+    near_misses = tmp_path / "near_misses.txt"
+    _write_pairs(paraphrases, [(f"question {i}", f"question {i} restated") for i in range(20)])
+    _write_pairs(near_misses, [(f"topic {i} alpha", f"topic {i} beta") for i in range(20)])
+
+    holdout_paraphrases = tmp_path / "holdout_paraphrases.txt"
+    holdout_near_misses = tmp_path / "holdout_near_misses.txt"
+    _write_pairs(holdout_paraphrases, [(f"held-out question {i}", f"held-out question {i} restated") for i in range(10)])
+    _write_pairs(holdout_near_misses, [(f"held-out topic {i} alpha", f"held-out topic {i} beta") for i in range(10)])
+
+    export_path = tmp_path / "calibration.json"
+    args = _calibrate_args(
+        tmp_path,
+        paraphrases,
+        near_misses,
+        holdout_paraphrases=str(holdout_paraphrases),
+        holdout_near_misses=str(holdout_near_misses),
+        export=str(export_path),
+    )
+    rc = cmd_calibrate(args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "HELD-OUT EVALUATION" in out
+    assert "WARNING" not in out or "in-sample" not in out.lower()
+
+    data = json.loads(export_path.read_text())
+    assert "held_out_evaluation" in data
+    assert "false_accepts" in data["held_out_evaluation"]
+    assert "false_rejects" in data["held_out_evaluation"]
+    assert data["held_out_evaluation"]["n_paraphrase_pairs"] == 10
+    assert data["held_out_evaluation"]["n_near_miss_pairs"] == 10
+
+
+def test_cmd_calibrate_holdout_requires_both_files_together(tmp_path, capsys):
+    from latticememory.cli import cmd_calibrate
+
+    paraphrases = tmp_path / "paraphrases.txt"
+    near_misses = tmp_path / "near_misses.txt"
+    _write_pairs(paraphrases, [(f"question {i}", f"question {i} restated") for i in range(20)])
+    _write_pairs(near_misses, [(f"topic {i} alpha", f"topic {i} beta") for i in range(20)])
+
+    holdout_paraphrases = tmp_path / "holdout_paraphrases.txt"
+    _write_pairs(holdout_paraphrases, [("held-out question", "held-out question restated")])
+
+    args = _calibrate_args(tmp_path, paraphrases, near_misses, holdout_paraphrases=str(holdout_paraphrases))
+    rc = cmd_calibrate(args)
+    assert rc == 1
+    out = capsys.readouterr().out
+    assert "holdout" in out.lower()

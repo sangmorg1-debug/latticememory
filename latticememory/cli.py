@@ -321,6 +321,17 @@ def _load_pair_file(path: Path) -> list[tuple[str, str]]:
 
 def cmd_calibrate(args: argparse.Namespace) -> int:
     """Calibrate a HammingRouter threshold from labeled paraphrase/near-miss pairs."""
+    metric = getattr(args, "metric", "hamming") or "hamming"
+    if metric not in ("hamming", "cosine"):
+        print(f"ERROR: --metric must be 'hamming' or 'cosine', got {metric!r}")
+        return 1
+
+    holdout_paraphrases_arg = getattr(args, "holdout_paraphrases", None)
+    holdout_near_misses_arg = getattr(args, "holdout_near_misses", None)
+    if bool(holdout_paraphrases_arg) != bool(holdout_near_misses_arg):
+        print("ERROR: --holdout-paraphrases and --holdout-near-misses must be given together")
+        return 1
+
     paraphrases_path = Path(args.paraphrases)
     near_misses_path = Path(args.near_misses)
     if not paraphrases_path.exists():
@@ -339,35 +350,65 @@ def cmd_calibrate(args: argparse.Namespace) -> int:
         print(f"ERROR: no valid pairs found in {near_misses_path}")
         return 1
 
+    holdout_paraphrase_pairs: list[tuple[str, str]] | None = None
+    holdout_near_miss_pairs: list[tuple[str, str]] | None = None
+    if holdout_paraphrases_arg and holdout_near_misses_arg:
+        holdout_paraphrases_path = Path(holdout_paraphrases_arg)
+        holdout_near_misses_path = Path(holdout_near_misses_arg)
+        if not holdout_paraphrases_path.exists():
+            print(f"ERROR: holdout paraphrases file not found: {holdout_paraphrases_path}")
+            return 1
+        if not holdout_near_misses_path.exists():
+            print(f"ERROR: holdout near-misses file not found: {holdout_near_misses_path}")
+            return 1
+        holdout_paraphrase_pairs = _load_pair_file(holdout_paraphrases_path)
+        holdout_near_miss_pairs = _load_pair_file(holdout_near_misses_path)
+        if not holdout_paraphrase_pairs:
+            print(f"ERROR: no valid pairs found in {holdout_paraphrases_path}")
+            return 1
+        if not holdout_near_miss_pairs:
+            print(f"ERROR: no valid pairs found in {holdout_near_misses_path}")
+            return 1
+
     from latticememory.hamming_router import HammingRouter
 
     print(f"Loading encoder: {args.encoder}")
     router = HammingRouter.from_model(args.encoder)
 
-    print("Computing Hamming distance statistics...")
-    gap_results = router.gap_stats(paraphrase_pairs, near_miss_pairs)
-    cal_results = router.calibrate_threshold(
-        paraphrase_pairs, near_miss_pairs, fp_budget=args.fp_budget
-    )
+    unit = "Cosine" if metric == "cosine" else "Hamming"
+    if metric == "cosine":
+        print("Computing cosine similarity statistics...")
+        gap_results = router.cosine_gap_stats(paraphrase_pairs, near_miss_pairs)
+        cal_results = router.calibrate_cosine_threshold(
+            paraphrase_pairs, near_miss_pairs, fp_budget=args.fp_budget
+        )
+        gap_label = "Gap (paraphrase_p5 - near_miss_p95)"
+    else:
+        print("Computing Hamming distance statistics...")
+        gap_results = router.gap_stats(paraphrase_pairs, near_miss_pairs)
+        cal_results = router.calibrate_threshold(
+            paraphrase_pairs, near_miss_pairs, fp_budget=args.fp_budget
+        )
+        gap_label = "Hamming Gap (near_miss_p5 - paraphrase_p95)"
 
     print("\n=======================================================")
-    print("                HAMMING DISTANCE STATISTICS            ")
+    print(f"                {unit.upper()} SIMILARITY STATISTICS            " if metric == "cosine" else "                HAMMING DISTANCE STATISTICS            ")
     print("=======================================================")
     print(f"Paraphrase pairs: {gap_results['n_paraphrase_pairs']}")
-    print(f"  Min Hamming: {gap_results['paraphrase']['min']}")
-    print(f"  P5 Hamming:  {gap_results['paraphrase']['p5']}")
-    print(f"  Mean Hamming: {gap_results['paraphrase']['mean']}")
-    print(f"  P95 Hamming: {gap_results['paraphrase']['p95']}")
-    print(f"  Max Hamming: {gap_results['paraphrase']['max']}")
+    print(f"  Min {unit}: {gap_results['paraphrase']['min']}")
+    print(f"  P5 {unit}:  {gap_results['paraphrase']['p5']}")
+    print(f"  Mean {unit}: {gap_results['paraphrase']['mean']}")
+    print(f"  P95 {unit}: {gap_results['paraphrase']['p95']}")
+    print(f"  Max {unit}: {gap_results['paraphrase']['max']}")
     print()
     print(f"Near-miss pairs: {gap_results['n_near_miss_pairs']}")
-    print(f"  Min Hamming: {gap_results['near_miss']['min']}")
-    print(f"  P5 Hamming:  {gap_results['near_miss']['p5']}")
-    print(f"  Mean Hamming: {gap_results['near_miss']['mean']}")
-    print(f"  P95 Hamming: {gap_results['near_miss']['p95']}")
-    print(f"  Max Hamming: {gap_results['near_miss']['max']}")
+    print(f"  Min {unit}: {gap_results['near_miss']['min']}")
+    print(f"  P5 {unit}:  {gap_results['near_miss']['p5']}")
+    print(f"  Mean {unit}: {gap_results['near_miss']['mean']}")
+    print(f"  P95 {unit}: {gap_results['near_miss']['p95']}")
+    print(f"  Max {unit}: {gap_results['near_miss']['max']}")
     print()
-    print(f"Hamming Gap (near_miss_p5 - paraphrase_p95): {gap_results['gap']}")
+    print(f"{gap_label}: {gap_results['gap']}")
     if gap_results["gap"] <= 0:
         print("  WARNING: Gap <= 0. No threshold gives FP=0 at non-zero recall.")
         print("  Consider training a snap encoder or raising --fp-budget.")
@@ -396,6 +437,27 @@ def cmd_calibrate(args: argparse.Namespace) -> int:
         print(f"Reliable:          {'Yes' if reliable else 'No (< 100 pairs per type — not production-ready)'}")
     print("-------------------------------------------------------")
 
+    held_out_results: dict | None = None
+    if holdout_paraphrase_pairs and holdout_near_miss_pairs and cal_results["threshold"] != -1:
+        held_out_results = router.evaluate_threshold(
+            holdout_paraphrase_pairs, holdout_near_miss_pairs, cal_results["threshold"], metric=metric
+        )
+        print("\nHELD-OUT EVALUATION (pairs not used for calibration):")
+        print("-------------------------------------------------------")
+        print(f"Held-out paraphrase pairs: {held_out_results['n_paraphrase_pairs']}")
+        print(f"Held-out near-miss pairs:  {held_out_results['n_near_miss_pairs']}")
+        print(f"False accepts: {held_out_results['false_accepts']} ({held_out_results['false_accept_rate']:.2%})")
+        print(f"False rejects: {held_out_results['false_rejects']} ({held_out_results['false_reject_rate']:.2%})")
+        print("-------------------------------------------------------")
+    elif cal_results["threshold"] != -1:
+        print(
+            "\nWARNING: this is an in-sample calibration only -- the threshold above was "
+            "evaluated on the same pairs used to choose it, which always looks better than "
+            "it performs on unseen data. Pass --holdout-paraphrases and "
+            "--holdout-near-misses (pairs not used above) for genuine held-out evidence "
+            "before trusting this threshold in production."
+        )
+
     if args.export:
         import datetime
 
@@ -411,8 +473,16 @@ def cmd_calibrate(args: argparse.Namespace) -> int:
             # a file via LATTICE_CALIBRATION_DATA_PATH / calibration_data_path without
             # re-running calibration -- see validate_precalibrated_artifact_schema().
             # Keep this in sync with calibrate_proxy.py's --export shape.
-            "artifact_type": "latticememory_hamming_calibration",
+            # Only the hamming metric's artifact_type is recognized by that loader --
+            # cosine calibration has no live-loading path yet, so it gets a distinct
+            # artifact_type that will not validate as a pre-calibrated Hamming artifact.
+            "artifact_type": (
+                "latticememory_hamming_cosine_calibration"
+                if metric == "cosine"
+                else "latticememory_hamming_calibration"
+            ),
             "artifact_version": 1,
+            "metric": metric,
             "model": args.encoder,
             "d_model": router._d_model,
             "calibration_data_sha256": sha,
@@ -421,6 +491,8 @@ def cmd_calibrate(args: argparse.Namespace) -> int:
             "calibration": cal_results,
             "gap_stats": gap_results,
         }
+        if held_out_results is not None:
+            out_data["held_out_evaluation"] = held_out_results
         out_path.write_text(json.dumps(out_data, indent=2, ensure_ascii=False), encoding="utf-8")
         print(f"\nWrote calibration JSON to: {args.export}")
 
@@ -957,6 +1029,9 @@ def main() -> int:
     p_cal.add_argument("--encoder",      default="dfrokido/bge-large-e8-snap", help="Encoder model")
     p_cal.add_argument("--fp-budget",    type=float, default=0.0, help="Maximum false-positive rate budget (default: 0.0 = zero FP)")
     p_cal.add_argument("--export",       default=None, help="Optional path to write full sweep + recommendation as JSON")
+    p_cal.add_argument("--metric",       default="hamming", choices=["hamming", "cosine"], help="Calibrate a Hamming-distance threshold (for --hamming-mode) or a raw-embedding cosine threshold (for --hamming-cosine-gate)")
+    p_cal.add_argument("--holdout-paraphrases", default=None, help="Paraphrase pairs NOT used for calibration, to report a genuine held-out false-reject rate (must be given with --holdout-near-misses)")
+    p_cal.add_argument("--holdout-near-misses", default=None, help="Near-miss pairs NOT used for calibration, to report a genuine held-out false-accept rate (must be given with --holdout-paraphrases)")
 
     # ---- serve ----
     p_srv = sub.add_parser("serve", help="Start the proxy server")

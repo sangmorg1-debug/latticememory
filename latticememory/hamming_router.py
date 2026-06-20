@@ -502,6 +502,50 @@ class HammingRouter:
             "n_near_miss_pairs": len(near_miss_pairs),
         }
 
+    def evaluate_threshold(
+        self,
+        paraphrase_pairs: list[tuple[str, str]],
+        near_miss_pairs: list[tuple[str, str]],
+        threshold: float,
+        *,
+        metric: str = "hamming",
+    ) -> dict:
+        """Score a fixed threshold against pairs it was not necessarily calibrated on.
+
+        Use this to evaluate a threshold from calibrate_threshold()/
+        calibrate_cosine_threshold() against a held-out set of pairs that played no
+        part in choosing that threshold -- calibrating and evaluating on the same
+        pairs always looks better than a threshold actually performs on unseen data.
+        """
+        if metric not in ("hamming", "cosine"):
+            raise ValueError(f"metric must be 'hamming' or 'cosine', got {metric!r}")
+        if not paraphrase_pairs:
+            raise ValueError("paraphrase_pairs must not be empty")
+        if not near_miss_pairs:
+            raise ValueError("near_miss_pairs must not be empty")
+
+        if metric == "cosine":
+            para_scores = self._batch_pair_cosine(paraphrase_pairs)
+            nm_scores = self._batch_pair_cosine(near_miss_pairs)
+            false_rejects = sum(1 for score in para_scores if score < threshold)
+            false_accepts = sum(1 for score in nm_scores if score >= threshold)
+        else:
+            para_dists = self._batch_pair_hamming(paraphrase_pairs)
+            nm_dists = self._batch_pair_hamming(near_miss_pairs)
+            false_rejects = sum(1 for dist in para_dists if dist > threshold)
+            false_accepts = sum(1 for dist in nm_dists if dist <= threshold)
+
+        return {
+            "metric": metric,
+            "threshold": threshold,
+            "n_paraphrase_pairs": len(paraphrase_pairs),
+            "n_near_miss_pairs": len(near_miss_pairs),
+            "false_accepts": false_accepts,
+            "false_accept_rate": round(false_accepts / len(near_miss_pairs), 4),
+            "false_rejects": false_rejects,
+            "false_reject_rate": round(false_rejects / len(paraphrase_pairs), 4),
+        }
+
 
 def validate_calibration_data_schema(data: dict) -> None:
     """Validate that the given dictionary conforms to the calibration dataset schema."""

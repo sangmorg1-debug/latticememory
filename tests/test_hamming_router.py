@@ -438,3 +438,58 @@ def test_calibrate_cosine_threshold_satisfies_fp_budget():
     assert result["threshold"] <= 1.0
     assert result["recall"] == 1.0
     assert result["fp_rate"] == 0.0
+
+
+def test_evaluate_threshold_detects_false_accept_cosine():
+    router = HammingRouter(encoder=CosineFixtureEncoder(), d_model=8)
+    paraphrase_pairs = [("same canonical", "same paraphrase")]
+    near_miss_pairs = [("same canonical", "near miss")]
+
+    too_loose = router.evaluate_threshold(paraphrase_pairs, near_miss_pairs, 0.3, metric="cosine")
+    assert too_loose["false_accepts"] == 1
+    assert too_loose["false_accept_rate"] == 1.0
+    assert too_loose["false_rejects"] == 0
+    assert too_loose["n_paraphrase_pairs"] == 1
+    assert too_loose["n_near_miss_pairs"] == 1
+
+    safe = router.evaluate_threshold(paraphrase_pairs, near_miss_pairs, 0.5, metric="cosine")
+    assert safe["false_accepts"] == 0
+    assert safe["false_accept_rate"] == 0.0
+    assert safe["false_rejects"] == 0
+
+
+def test_evaluate_threshold_detects_false_reject_cosine():
+    router = HammingRouter(encoder=CosineFixtureEncoder(), d_model=8)
+    paraphrase_pairs = [("same canonical", "same paraphrase")]
+    near_miss_pairs = [("same canonical", "near miss")]
+
+    too_strict = router.evaluate_threshold(paraphrase_pairs, near_miss_pairs, 1.5, metric="cosine")
+    assert too_strict["false_rejects"] == 1
+    assert too_strict["false_reject_rate"] == 1.0
+
+
+def test_evaluate_threshold_detects_false_accept_hamming(router):
+    paraphrase_pairs = [("question one", "question one restated")]
+    near_miss_pairs = [("topic alpha", "topic beta")]
+    [near_miss_distance] = router._batch_pair_hamming(near_miss_pairs)
+
+    too_loose = router.evaluate_threshold(paraphrase_pairs, near_miss_pairs, near_miss_distance, metric="hamming")
+    assert too_loose["false_accepts"] == 1
+
+    safe = router.evaluate_threshold(paraphrase_pairs, near_miss_pairs, near_miss_distance - 1, metric="hamming")
+    assert safe["false_accepts"] == 0
+
+
+def test_evaluate_threshold_defaults_to_hamming_metric(router):
+    paraphrase_pairs = [("question one", "question one restated")]
+    near_miss_pairs = [("topic alpha", "topic beta")]
+    [near_miss_distance] = router._batch_pair_hamming(near_miss_pairs)
+
+    result = router.evaluate_threshold(paraphrase_pairs, near_miss_pairs, near_miss_distance)
+    assert result["false_accepts"] == 1
+
+
+def test_evaluate_threshold_rejects_unknown_metric():
+    router = HammingRouter(encoder=CosineFixtureEncoder(), d_model=8)
+    with pytest.raises(ValueError, match="metric"):
+        router.evaluate_threshold([("a", "b")], [("c", "d")], 0.5, metric="euclidean")

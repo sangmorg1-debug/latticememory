@@ -380,6 +380,7 @@ lattice drift --log misses.jsonl --window 604800 --export drift_report.json
 
 | Command | What it does |
 | --- | --- |
+| `lattice calibrate` | Calibrate a Hamming-distance or cosine threshold from labeled paraphrase/near-miss pairs, with optional `--holdout-*` pairs for genuine held-out evidence |
 | `lattice populate` | Load Q&A pairs from CSV/JSON into a SQLite cache |
 | `lattice inspect` | Print cache statistics |
 | `lattice export` | Export all cache entries to a portable JSONL file |
