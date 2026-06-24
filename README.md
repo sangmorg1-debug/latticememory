@@ -135,6 +135,10 @@ print(result.value)       # "30-day returns, full refund."
 print(result.retrieval_path)  # check this if you're relying on the O(1)/compression benefit specifically
 ```
 
+### Using PQ with the proxy server
+
+`LatticeLLMProxy` has no dedicated PQ constructor flag (it's already a large, production-critical class) - wire PQ in through its existing `semantic_cache=` parameter instead. See [`examples/pq_proxy_setup.py`](examples/pq_proxy_setup.py) for a complete, runnable example - including the one footgun to know about: unlike `LatticeIndex`, a PQ-backed proxy built this way has no auto-fit safety net, so codebooks must be fit *before* the proxy serves any traffic.
+
 ### Hybrid RAG / document search
 
 For asymmetric search (user questions against document passages), use hybrid mode — E8 for cache hits, dense fallback for novel queries:
