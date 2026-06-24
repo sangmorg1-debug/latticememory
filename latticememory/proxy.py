@@ -1227,10 +1227,9 @@ class LatticeLLMProxy:
                 {
                     "role": "user",
                     "content": (
-                        "Are these two questions asking for the same information, such "
-                        "that the same answer would correctly address both? Reply with "
+                        "Do these two sentences express the same meaning? Reply with "
                         "exactly one word: YES or NO.\n\n"
-                        f"Question A: {new_prompt}\nQuestion B: {cached_prompt}"
+                        f"Sentence A: {new_prompt}\nSentence B: {cached_prompt}"
                     ),
                 }
             ],
