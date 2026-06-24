@@ -259,9 +259,21 @@ class RFSnapLatticeMemory:
         beam_radius: int = 1,
         beam_key_scan_max_documents: int = 4096,
         sqlite_path: str | Path | None = None,
+        lattice: "E8LatticeDB | object | None" = None,
     ):
         self.d_model = d_model
-        self.lattice = E8LatticeDB(d_model=d_model)
+        # Defaults to E8LatticeDB (original behavior, unchanged). Pass an
+        # already-constructed PQLatticeDB (latticememory.rag.pq_retriever) to
+        # use data-calibrated Product Quantization addressing instead - see
+        # docs/manual-results/2026-06-24-open-vocab-semantic-addressing-redesign.md
+        # for why PQ exists: E8's fixed 128-block lattice has 0% real-model
+        # hit rate on open-vocabulary paraphrases (verified), PQ reaches 31%+
+        # on the same real benchmark. Any backend passed here must implement
+        # the same interface as E8LatticeDB (add_document, add_batch,
+        # retrieve_exact, retrieve_radius_1, retrieve_within_radius, search,
+        # save/load, and the hash_store/_embeddings/_metadata/_keys/device/
+        # num_blocks attributes) - PQLatticeDB does.
+        self.lattice = lattice if lattice is not None else E8LatticeDB(d_model=d_model)
         self.fallback = fallback
         self.hamming_pool_multiplier = max(int(hamming_pool_multiplier), 1)
         if rerank_mode not in {"cosine", "hybrid_text", "neural_text"}:

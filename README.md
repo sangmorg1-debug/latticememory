@@ -10,15 +10,19 @@ LatticeMemory uses the [E8 lattice](https://en.wikipedia.org/wiki/E8_lattice) �
 
 ## What it's for
 
-| Workload | E8 path | Fallback needed? |
-| --- | --- | --- |
-| Repeat / paraphrase LLM queries (cache) | ✅ O(1) exact or Hamming hit | No |
-| Semantic deduplication, near-duplicate detection | ✅ Key collision = duplicate | No |
-| Dataset quality filtering, semantic sharding | ✅ Stable cluster addresses | No |
-| IoT/command normalization (symmetric vocab) | ✅ Fixed command set → fixed keys | No |
-| **Asymmetric QA/passage search (RAG)** | ❌ Query ≠ passage in E8 space | **Yes — Int8 or float32 required** |
+| Workload | Recommended mode | Real-model result | Fallback needed? |
+| --- | --- | --- | --- |
+| Exact-repeat LLM queries (identical text) | `mode="cache"` | ✅ O(1) exact hit, reliable | No |
+| **Open-vocabulary paraphrase caching** (general chat, varied phrasing) | `mode="pq"` | ✅ **31% Recall@1** on real PAWS paraphrases, confirmed at ~7x corpus scale ([details](docs/manual-results/2026-06-24-open-vocab-semantic-addressing-redesign.md)) | No (PQ's own candidate pool + rerank is the answer) |
+| Semantic deduplication, near-duplicate detection | `mode="cache"` | ✅ Key collision = duplicate | No |
+| Dataset quality filtering, semantic sharding | `mode="cache"` | ✅ Stable cluster addresses | No |
+| **Asymmetric QA/passage search (RAG)** | `mode="hybrid"` | ❌ 0.0% (E8) / 16.4% best case (PQ, in-domain) - query ≠ passage in embedding space either way | **Yes — Int8 or float32 required** |
 
-E8 keys route fast for content that is semantically identical or near-identical. They are not a replacement for vector search on asymmetric workloads where the query text and the correct passage are structurally different.
+**The default E8 lattice mechanism (`mode="cache"`/`mode="hybrid"`'s E8 path) has no demonstrated real-data success outside of literal exact-text repeats** - not on open-vocabulary text, and not even on a genuine closed-vocabulary held-out test (verified 2026-06-24: real encoder, real CLINC150 intents, zero train/test text overlap, scored **0.00%** - a complete miss on all 480 queries; an earlier claim of "100% on a 16-command domain" turned out to be measuring a different mechanism entirely, `qa_bot.py`'s separate centroid-classification mode, tested via re-submitting verbatim training strings rather than real held-out paraphrases - see `docs/honest_product_review.md` gap #6 for the full retraction).
+
+**`mode="pq"`** (Product Quantization, added 2026-06-24) is the actual fix: data-calibrated learned codebooks over 8 coarser blocks instead of E8's fixed 128-block mathematical lattice. Real-model validation against PAWS: **31% Recall@1** (vs. E8's 0.40%), confirmed to hold up at ~7x larger corpus scale, with candidate pools small enough (≈3-7 documents) to keep the actual point of this library - a cheap address-based lookup instead of full vector search - intact. PQ's codebooks need real data to calibrate (unlike E8's fixed geometry): call `index.fit_pq(sample_texts)` with a representative sample (1,000+ texts from your domain, ideally) before `add()`, or just call `add()` directly and the first batch will auto-fit the codebooks (works, but a dedicated calibration sample generalizes better - see the zero-shot vs. in-domain comparison in the linked results doc).
+
+Asymmetric QA/RAG (query text structurally different from passage text) remains genuinely hard for either mechanism - PQ improves it from 0.0% to a best case of 16.4% in-domain, which the project's own findings call "too low for production search." Use `mode="hybrid"` and treat the Int8 dense fallback as the real answer for that workload, not PQ or E8.
 
 ---
 
@@ -74,7 +78,19 @@ pip install 'lattice-memory-e8[faiss]'   # FAISS vector fallback
 ```python
 from latticememory import LatticeIndex
 
-index = LatticeIndex()  # downloads dfrokido/bge-large-e8-snap on first run (~500MB)
+# mode="pq" for open-ended phrasing (general chat caching) - this is the
+# mechanism that actually delivers real paraphrase hits (31% Recall@1 on
+# real PAWS validation, with the production default pq_codebook_size=256).
+# Codebook fitting needs at least pq_codebook_size training vectors - this
+# demo uses a tiny codebook (pq_codebook_size=8) so it runs with a handful
+# of example texts; production use should keep the default 256 and fit on
+# 1,000+ representative texts from your actual domain for real quality.
+index = LatticeIndex(mode="pq", pq_codebook_size=8)  # downloads dfrokido/bge-large-e8-snap on first run (~500MB)
+index.fit_pq([
+    "What is the refund policy?", "How do I reset my password?", "Where is my order?",
+    "Can I cancel my subscription?", "How long does shipping take?",
+    "What is the refund policy.", "How do I change my password?", "When will my order arrive?",
+])
 
 index.add([
     "What is the refund policy?",
@@ -82,32 +98,41 @@ index.add([
     "Where is my order?",
 ])
 
-# Exact text → guaranteed O(1) lattice_exact hit
+# Exact text → guaranteed O(1)-ish lattice_exact hit
 result = index.search("What is the refund policy?", top_k=1)
 print(result[0].retrieval_path)  # lattice_exact
 
-# Near-paraphrase → lattice_exact or Hamming hit (same E8 neighborhood)
+# Real paraphrase → PQ's learned codebooks give this a real shot at a lattice
+# hit (not guaranteed - 31% Recall@1 on the real PAWS benchmark, not 100%).
+# Check retrieval_path; "miss" with no fallback configured returns no hits.
 result2 = index.search("What's your return policy?", top_k=1)
-print(result2[0].retrieval_path)  # lattice_exact or lattice_hamming
+print(result2[0].retrieval_path if result2 else "miss")
 
 print(index.stats())
 ```
 
+For closed/templated vocabularies only (fixed intent sets, FAQ catalogs with exact-phrasing repeats), `mode="cache"` (E8 lattice, no calibration needed) is simpler - but verify it actually works for your real data before relying on it; "works for closed vocabularies" was itself an unverified claim until corrected on 2026-06-24 (see "What it's for" above).
+
 ### Semantic cache with answer lookup
+
+For a small, closed set of templated questions (a FAQ catalog, fixed intents), `RFSnapLatticeMemory` with no fallback is fine - exact and near-exact text reliably hits. For anything with open-ended phrasing, **always wire in a dense fallback** - without one, a paraphrase that doesn't land in the same E8 cell is a silent miss, not a slow-but-correct answer:
 
 ```python
 from latticememory import RFSnapSemanticCache, RFSnapTextMemory, RFSnapLatticeMemory
+from latticememory.memory import DenseVectorFallback
 from sentence_transformers import SentenceTransformer
 
 encoder = SentenceTransformer("dfrokido/bge-large-e8-snap")
-lm = RFSnapLatticeMemory(d_model=1024)
+fallback = DenseVectorFallback(d_model=1024, quantization_bits=8)  # Int8 - see benchmarks above
+lm = RFSnapLatticeMemory(d_model=1024, fallback=fallback)
 rt = RFSnapTextMemory(encoder=encoder, d_model=1024, memory=lm)
 cache = RFSnapSemanticCache(runtime=rt)
 
 cache.put("What is the refund policy?", value="30-day returns, full refund.")
-result = cache.get("What's your return policy?")  # paraphrase hit
-print(result.hit)        # True
-print(result.value)      # "30-day returns, full refund."
+result = cache.get("What's your return policy?")
+print(result.hit)         # True - correct, but likely served via dense fallback, not an O(1) E8 hit
+print(result.value)       # "30-day returns, full refund."
+print(result.retrieval_path)  # check this if you're relying on the O(1)/compression benefit specifically
 ```
 
 ### Hybrid RAG / document search
