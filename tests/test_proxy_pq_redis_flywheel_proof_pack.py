@@ -1,0 +1,172 @@
+from __future__ import annotations
+
+import json
+from unittest.mock import patch
+
+from latticememory.proof_pack import (
+    build_support_dataset,
+    load_support_dataset_jsonl,
+    run_exact_string_baseline,
+    run_proxy_pq_redis_flywheel_proof_pack,
+)
+
+
+def test_support_dataset_contains_required_splits_and_row_fields():
+    dataset = build_support_dataset(
+        seed_count=6,
+        calibration_count=8,
+        evaluation_count=18,
+        adversarial_count=6,
+    )
+
+    assert set(dataset) == {"cache_seed", "calibration", "evaluation", "adversarial"}
+    assert len(dataset["cache_seed"]) == 6
+    assert len(dataset["calibration"]) == 8
+    assert len(dataset["evaluation"]) == 18
+    assert len(dataset["adversarial"]) == 6
+
+    row = dataset["evaluation"][0]
+    assert {
+        "id",
+        "intent_id",
+        "prompt",
+        "canonical_answer",
+        "expected_cache_id",
+        "is_repeat",
+        "is_paraphrase",
+        "is_adversarial",
+    }.issubset(row)
+
+    assert any(r["is_repeat"] for r in dataset["evaluation"])
+    assert any(r["is_paraphrase"] for r in dataset["evaluation"])
+    assert all(r["is_adversarial"] for r in dataset["adversarial"])
+
+
+def test_exact_string_baseline_reports_cache_and_safety_metrics():
+    dataset = build_support_dataset(
+        seed_count=4,
+        calibration_count=4,
+        evaluation_count=12,
+        adversarial_count=4,
+    )
+
+    row = run_exact_string_baseline(dataset)
+
+    assert row["run_id"] == "exact_string"
+    assert row["total_requests"] == 16
+    assert 0.0 < row["exact_hit_rate"] < 1.0
+    assert row["approximate_hit_rate"] == 0.0
+    assert row["false_positive_rate"] == 0.0
+    assert row["adversarial_false_positive_rate"] == 0.0
+    assert row["upstream_call_rate"] > 0.0
+    assert row["estimated_cost_saved_usd"] > 0.0
+    assert row["status"] == "ok"
+
+
+def test_proxy_pq_redis_flywheel_proof_pack_writes_artifacts(tmp_path):
+    summary = run_proxy_pq_redis_flywheel_proof_pack(
+        tmp_path,
+        seed_count=8,
+        calibration_count=8,
+        evaluation_count=24,
+        adversarial_count=8,
+    )
+
+    summary_path = tmp_path / "proof_pack_summary.json"
+    report_path = tmp_path / "proof_pack_report.md"
+    review_path = tmp_path / "flywheel_review_queue.json"
+    import_path = tmp_path / "flywheel_review_import_result.json"
+
+    assert summary_path.exists()
+    assert report_path.exists()
+    assert review_path.exists()
+    assert import_path.exists()
+
+    loaded = json.loads(summary_path.read_text(encoding="utf-8"))
+    run_ids = {row["run_id"] for row in loaded["runs"]}
+    assert {
+        "exact_string",
+        "dense_cosine",
+        "lattice_pq_local",
+        "lattice_pq_redis",
+    }.issubset(run_ids)
+
+    redis_row = next(row for row in loaded["runs"] if row["run_id"] == "lattice_pq_redis")
+    assert redis_row["status"] == "ok"
+    assert redis_row["cache_entries"] >= 8
+    assert redis_row["redis_memory_mb"] > 0.0
+    assert redis_row["flywheel_miss_clusters"] >= 1
+    assert redis_row["reviewed_answers_loaded"] >= 1
+
+    assert summary["artifact_dir"] == str(tmp_path)
+    assert "LatticeMemory Proxy + PQ + Redis + Flywheel Proof Pack" in report_path.read_text(encoding="utf-8")
+
+
+def test_external_support_dataset_jsonl_round_trips_required_splits(tmp_path):
+    dataset = build_support_dataset(
+        seed_count=8,
+        calibration_count=8,
+        evaluation_count=16,
+        adversarial_count=8,
+    )
+    path = tmp_path / "external_support_dataset.jsonl"
+    with path.open("w", encoding="utf-8") as fh:
+        for rows in dataset.values():
+            for row in rows:
+                fh.write(json.dumps(row) + "\n")
+
+    loaded = load_support_dataset_jsonl(path)
+
+    assert {split: len(rows) for split, rows in loaded.items()} == {
+        "cache_seed": 8,
+        "calibration": 8,
+        "evaluation": 16,
+        "adversarial": 8,
+    }
+    assert loaded["evaluation"][0]["source"] == "external_jsonl"
+
+
+def test_proof_pack_reports_real_redis_shared_cache_when_reachable(tmp_path):
+    from latticememory.proof_pack import _InMemoryRedis
+
+    redis_client = _InMemoryRedis()
+    with patch("redis.from_url", return_value=redis_client):
+        summary = run_proxy_pq_redis_flywheel_proof_pack(
+            tmp_path,
+            seed_count=8,
+            calibration_count=8,
+            evaluation_count=24,
+            adversarial_count=8,
+            redis_url="redis://localhost:6379/15",
+        )
+
+    redis_row = next(row for row in summary["runs"] if row["run_id"] == "lattice_pq_redis_real")
+    assert redis_row["status"] == "ok"
+    assert redis_row["redis_backend"] == "real"
+    assert redis_row["redis_persistence_verified"] is True
+    assert redis_row["multi_proxy_shared_cache_verified"] is True
+    assert redis_row["redis_memory_mb"] > 0.0
+
+
+def test_proof_pack_writes_skipped_baselines_and_public_claim_card(tmp_path):
+    summary = run_proxy_pq_redis_flywheel_proof_pack(
+        tmp_path,
+        seed_count=8,
+        calibration_count=8,
+        evaluation_count=24,
+        adversarial_count=8,
+        include_competitor_baselines=True,
+    )
+
+    run_ids = {row["run_id"] for row in summary["runs"]}
+    assert {"redisvl_direct", "gptcache_direct", "upstash_semantic_cache"}.issubset(run_ids)
+    skipped = [row for row in summary["runs"] if row["status"] == "skipped"]
+    assert any("not installed" in row["skip_reason"] or "credentials" in row["skip_reason"] for row in skipped)
+
+    claim_card = tmp_path / "public_claim_card.md"
+    assert claim_card.exists()
+    text = claim_card.read_text(encoding="utf-8")
+    assert "reduces repeated/paraphrased upstream calls" in text
+    assert "does not replace general-purpose vector databases" in text
+    assert "Safest Zero-FP Measured Row" in text
+    assert "Highest-Hit Measured Row" in text

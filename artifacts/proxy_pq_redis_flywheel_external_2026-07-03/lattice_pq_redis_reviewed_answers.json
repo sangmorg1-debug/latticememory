@@ -1,0 +1,17 @@
+[
+  {
+    "answer": "Reviewed support answer for recurring miss cluster.",
+    "centroid_key_hex": "00010001",
+    "cluster_id": 0,
+    "intent_id": "proof_pack_review",
+    "representative_question": "How do I activate an eSIM on a phone that is not compatible?",
+    "sample_questions": [
+      "When is my phone bill due if my account is already closed?",
+      "How do I activate an eSIM on a phone that is not compatible?",
+      "Can I use my plan internationally without any roaming charges?",
+      "How long do I have to return a damaged phone without insurance?",
+      "Why did my mobile data slow down after I reported the phone stolen?"
+    ],
+    "size": 16
+  }
+]
