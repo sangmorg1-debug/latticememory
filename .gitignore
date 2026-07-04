@@ -9,6 +9,7 @@ build/
 .venv/
 venv/
 .pytest_cache/
+.worktrees/
 *.db
 rust/target/
 node_modules/
