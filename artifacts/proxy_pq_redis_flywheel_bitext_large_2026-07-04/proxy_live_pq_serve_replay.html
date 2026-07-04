@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>LatticeMemory Live Proxy Replay Demo</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 32px; color: #172033; }
+    table { border-collapse: collapse; min-width: 520px; }
+    th, td { border-bottom: 1px solid #d8dde8; padding: 8px 10px; text-align: left; }
+    td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+    pre { background: #f6f8fb; padding: 16px; overflow: auto; }
+  </style>
+</head>
+<body>
+  <h1>LatticeMemory Live Proxy Replay Demo</h1>
+  <table>
+    <tr><th>Metric</th><th>Value</th></tr>
+    <tr><td>Total requests</td><td>6000</td></tr>
+    <tr><td>Hit rate</td><td>0.9917</td></tr>
+    <tr><td>Upstream call rate</td><td>0.0083</td></tr>
+    <tr><td>False-positive rate</td><td>0.0000</td></tr>
+    <tr><td>Adversarial false-positive rate</td><td>0.0000</td></tr>
+    <tr><td>Avg latency ms</td><td>16.976</td></tr>
+  </table>
+  <h2>Analytics</h2>
+  <pre>{
+  &quot;cache_entries&quot;: 50,
+  &quot;estimated_savings_usd&quot;: 1.4875,
+  &quot;flywheel&quot;: {},
+  &quot;hamming_router&quot;: {
+    &quot;calibrated&quot;: false,
+    &quot;fp_rate&quot;: 0.0,
+    &quot;mode&quot;: &quot;serve&quot;,
+    &quot;recall&quot;: 0.0
+  },
+  &quot;hit_rate&quot;: 0.9917,
+  &quot;hits&quot;: 5950,
+  &quot;intent_distribution&quot;: {
+    &quot;cancel_order&quot;: 2,
+    &quot;change_order&quot;: 2,
+    &quot;change_shipping_address&quot;: 2,
+    &quot;check_cancellation_fee&quot;: 2,
+    &quot;check_invoice&quot;: 2,
+    &quot;check_payment_methods&quot;: 1,
+    &quot;check_refund_policy&quot;: 2,
+    &quot;complaint&quot;: 2,
+    &quot;contact_customer_service&quot;: 1,
+    &quot;contact_human_agent&quot;: 2,
+    &quot;create_account&quot;: 1,
+    &quot;delete_account&quot;: 2,
+    &quot;delivery_options&quot;: 2,
+    &quot;delivery_period&quot;: 2,
+    &quot;edit_account&quot;: 2,
+    &quot;get_invoice&quot;: 1,
+    &quot;get_refund&quot;: 2,
+    &quot;newsletter_subscription&quot;: 2,
+    &quot;payment_issue&quot;: 1,
+    &quot;place_order&quot;: 1,
+    &quot;recover_password&quot;: 1,
+    &quot;registration_problems&quot;: 2,
+    &quot;review&quot;: 2,
+    &quot;set_up_shipping_address&quot;: 2,
+    &quot;switch_account&quot;: 2,
+    &quot;track_order&quot;: 2,
+    &quot;track_refund&quot;: 2
+  },
+  &quot;misses&quot;: 50,
+  &quot;rolling_hit_rate&quot;: 0.95,
+  &quot;total_events&quot;: 6550,
+  &quot;total_requests&quot;: 6000
+}</pre>
+  <p>This live replay validates proxy wiring and analytics. It does not prove RedisVL superiority,
+  general RAG superiority, or safety of raw PQ hits without validation.</p>
+</body>
+</html>

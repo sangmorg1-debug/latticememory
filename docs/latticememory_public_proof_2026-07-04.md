@@ -49,28 +49,49 @@ claim here is not RedisVL superiority; it is the explicit operating-policy
 matrix, validation gate, false-positive accounting, and flywheel-ready proxy
 shape.
 
-## Live Proxy Replay
+## Proof Harness Vs Live Server
 
-`examples/proxy_replay_demo.py` replays the same large dataset through the
-OpenAI-compatible proxy path with Redis-backed cache storage and cache cosine
-validation enabled.
+The proof harness and the live proxy replay answer different questions and
+should not be collapsed into one number.
 
-| Metric | Value |
-|---|---:|
-| Total requests | 6,000 |
-| Hit rate | 0.9917 |
-| Upstream call rate | 0.0083 |
-| False-positive rate | 0.0000 |
-| Adversarial false-positive rate | 0.0000 |
-| Rejected candidates | 50 |
-| Avg latency ms | 4.383 |
+| Path | Artifact | Hit rate | Upstream rate | FP rate | Adv FP rate | Avg ms |
+|---|---|---:|---:|---:|---:|---:|
+| Static proof harness policy | `lattice_pq_redis_validated_cosine.json` | 0.9812 | 0.0188 | 0.0000 | 0.0000 | 1.021 |
+| In-process proxy replay | `proxy_replay_demo.json` | 0.9917 | 0.0083 | 0.0000 | 0.0000 | 4.383 |
+| Live `lattice serve --pq-proof-dataset` replay | `proxy_live_pq_serve_replay.json` | 0.9917 | 0.0083 | 0.0000 | 0.0000 | 16.976 |
+
+`examples/proxy_replay_demo.py` exercises the proxy app in-process with
+Redis-backed cache storage and cache cosine validation enabled.
+
+`examples/proxy_live_replay_demo.py` exercises a real HTTP server started with:
+
+```powershell
+lattice serve `
+  --redis-url redis://localhost:6382/0 `
+  --redis-namespace public-demo-live-pq-2026-07-04 `
+  --pq-proof-dataset artifacts\proxy_pq_redis_flywheel_bitext_large_2026-07-04\bitext_support_dataset_large.jsonl `
+  --pq-num-blocks 4 `
+  --pq-codebook-size 4 `
+  --cache-cosine-gate `
+  --cache-cosine-threshold 0.999
+```
+
+The live replay uses a deterministic OpenAI-compatible local upstream for
+misses, so it validates proxy wiring, Redis-backed cache storage, PQ proof-mode
+startup, validation-gated serving, and `/v1/analytics` without spending API
+tokens.
+
+The live replay is stateful: rejected candidates fall through to upstream and
+can then become cache entries for later exact requests. That is why its upstream
+rate is lower than the static proof-harness policy row.
 
 ## Profiling Result
 
 The previous large-run issue was observability, not a confirmed Redis deadlock.
-The new `proof_pack_progress.jsonl` file records every completed run. In the
-large run, `lattice_pq_redis_real` completed in `28.145s`; it was the slowest
-row, but it did finish. The validated Redis PQ row completed in `6.126s`.
+The `proof_pack_progress.jsonl` file now records `started` and `finished` events
+for each run, so an interrupted run identifies the active row. In the large run,
+`lattice_pq_redis_real` completed in `28.145s`; it was the slowest row, but it
+did finish. The validated Redis PQ row completed in `6.126s`.
 
 ## Public Wording
 

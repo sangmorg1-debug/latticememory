@@ -1375,6 +1375,77 @@ def test_proxy_server_builds_pq_cache_from_proof_dataset_env(monkeypatch, tmp_pa
 
     assert isinstance(ps.proxy.cache.runtime.memory.lattice, PQLatticeDB)
     assert ps.proxy.cache.get(dataset["cache_seed"][0]["prompt"]).hit is True
+    assert ps.proxy.pq_proof["enabled"] is True
+    assert ps.proxy.pq_proof["dataset_path"] == str(dataset_path)
+    assert ps.proxy.pq_proof["seeded_entries"] == 8
+    assert ps.proxy.pq_proof["num_blocks"] == 4
+    assert ps.proxy.pq_proof["codebook_size"] == 4
+
+    client = TestClient(ps.app)
+    health = client.get("/health").json()
+    assert health["pq_proof"]["enabled"] is True
+    assert health["pq_proof"]["seeded_entries"] == 8
+    assert health["pq_proof"]["num_blocks"] == 4
+    assert health["pq_proof"]["codebook_size"] == 4
+
+
+def test_proxy_server_rejects_missing_pq_proof_dataset_env(monkeypatch, tmp_path):
+    import importlib
+    import sys
+    import pytest
+
+    missing_path = tmp_path / "missing.jsonl"
+    for mod_name in list(sys.modules):
+        if "latticememory.proxy_server" in mod_name:
+            del sys.modules[mod_name]
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setenv("LATTICE_HAMMING_MODE", "off")
+    monkeypatch.setenv("LATTICE_PQ_PROOF_DATASET", str(missing_path))
+
+    with pytest.raises(RuntimeError, match="LATTICE_PQ_PROOF_DATASET does not exist"):
+        importlib.import_module("latticememory.proxy_server")
+
+
+def test_proxy_analytics_counts_only_chat_requests_not_cache_management_events():
+    upstream = FakeUpstream()
+    proxy = LatticeLLMProxy(
+        upstream_url="https://example.test/v1/chat/completions",
+        upstream_api_key="test-key",
+        encoder=CanonicalPromptEncoder(384),
+        d_model=384,
+        upstream_client=upstream,
+    )
+    client = TestClient(proxy.create_app())
+
+    put_response = client.post(
+        "/v1/cache",
+        json={
+            "prompt": "cached question",
+            "value": {
+                "choices": [{"message": {"content": "cached answer"}}],
+                "usage": {"prompt_tokens": 10},
+            },
+        },
+    )
+    assert put_response.status_code == 200
+    hit_response = client.post(
+        "/v1/chat/completions",
+        json={"model": "test", "messages": [{"role": "user", "content": "cached question"}]},
+    )
+    assert hit_response.headers["x-lattice-cache"] == "HIT"
+    miss_response = client.post(
+        "/v1/chat/completions",
+        json={"model": "test", "messages": [{"role": "user", "content": "fresh question"}]},
+    )
+    assert miss_response.headers["x-lattice-cache"] == "MISS"
+
+    analytics = client.get("/v1/analytics").json()
+
+    assert analytics["total_events"] == 3
+    assert analytics["total_requests"] == 2
+    assert analytics["hits"] == 1
+    assert analytics["misses"] == 1
+    assert analytics["hit_rate"] == 0.5
 
 
 def test_cmd_serve_sets_hamming_cosine_gate_env(monkeypatch):

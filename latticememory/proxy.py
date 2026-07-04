@@ -485,7 +485,8 @@ class LatticeLLMProxy:
                     "encoder_dimension": proxy.hamming_router_encoder_dimension,
                     "calibration_file_hash": proxy.hamming_router_calibration_file_hash,
                     "calibration_timestamp": proxy.hamming_router_calibration_timestamp,
-                }
+                },
+                "pq_proof": getattr(proxy, "pq_proof", {"enabled": False}),
             }
 
         @app.post("/v1/chat/completions")
@@ -1058,9 +1059,10 @@ class LatticeLLMProxy:
             proxy: LatticeLLMProxy = request.app.state.proxy
             events = proxy.audit_events
 
-            total = len(events)
+            total_events = len(events)
             hits   = sum(1 for e in events if e.get("event_type") == "HIT")
             misses = sum(1 for e in events if e.get("event_type") == "MISS")
+            total_requests = hits + misses
 
             # Per-intent frequency from cache entries
             intent_freq: dict[str, int] = {}
@@ -1092,17 +1094,19 @@ class LatticeLLMProxy:
                 ]
 
             # Rolling hit rate (last 100 events)
-            recent = events[-100:] if events else []
+            request_events = [e for e in events if e.get("event_type") in {"HIT", "MISS"}]
+            recent = request_events[-100:] if request_events else []
             recent_hits   = sum(1 for e in recent if e.get("event_type") == "HIT")
             recent_total  = len(recent)
             rolling_hit_rate = recent_hits / recent_total if recent_total else 0.0
 
             return {
                 "cache_entries":    proxy.cache.size,
-                "total_requests":   total,
+                "total_events":     total_events,
+                "total_requests":   total_requests,
                 "hits":             hits,
                 "misses":           misses,
-                "hit_rate":         round(hits / total, 4) if total else 0.0,
+                "hit_rate":         round(hits / total_requests, 4) if total_requests else 0.0,
                 "rolling_hit_rate": round(rolling_hit_rate, 4),
                 "estimated_savings_usd": round(savings_usd, 6),
                 "intent_distribution": dict(sorted(intent_freq.items(), key=lambda x: -x[1])),

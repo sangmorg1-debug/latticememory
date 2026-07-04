@@ -5,6 +5,7 @@ Run with: uvicorn latticememory.proxy_server:app --host 0.0.0.0 --port 8000
 Or via Docker: docker run -p 8000:8000 -e OPENAI_API_KEY=... latticememory/proxy
 """
 import os
+from pathlib import Path
 from latticememory.proxy import LatticeLLMProxy
 
 # Configuration from environment
@@ -51,7 +52,13 @@ if not upstream_api_key:
     upstream_api_key = ""  # proxy handles missing key gracefully per-request
 
 semantic_cache = None
+pq_proof = {"enabled": False}
 if pq_proof_dataset:
+    dataset_path = Path(pq_proof_dataset)
+    if not dataset_path.exists():
+        raise RuntimeError(f"LATTICE_PQ_PROOF_DATASET does not exist: {dataset_path}")
+    if not dataset_path.is_file():
+        raise RuntimeError(f"LATTICE_PQ_PROOF_DATASET is not a file: {dataset_path}")
     from latticememory.proof_pack import build_seeded_pq_cache_from_support_jsonl
 
     semantic_cache = build_seeded_pq_cache_from_support_jsonl(
@@ -62,6 +69,14 @@ if pq_proof_dataset:
         pq_codebook_size=pq_codebook_size,
         flush_redis=True,
     )
+    pq_proof = {
+        "enabled": True,
+        "dataset_path": str(dataset_path),
+        "num_blocks": pq_num_blocks,
+        "codebook_size": pq_codebook_size,
+        "seeded_entries": semantic_cache.size,
+        "mode": "proof_demo",
+    }
 
 
 # Instantiate proxy
@@ -95,6 +110,7 @@ proxy = LatticeLLMProxy(
     redis_url=redis_url,
     redis_namespace=redis_namespace,
 )
+proxy.pq_proof = pq_proof
 
 # Create FastAPI app
 app = proxy.create_app()
