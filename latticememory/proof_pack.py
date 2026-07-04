@@ -543,6 +543,7 @@ def run_proxy_pq_redis_flywheel_proof_pack(
         run_exact_string_baseline(dataset),
         _run_dense_cosine_baseline(dataset),
         _run_proxy_pq_baseline(dataset, artifact_dir, run_id="lattice_pq_local", use_redis=False),
+        _run_validated_pq_baseline(dataset, artifact_dir, run_id="lattice_pq_validated_cosine"),
         _run_proxy_pq_baseline(dataset, artifact_dir, run_id="lattice_pq_redis", use_redis=True),
     ]
     if redis_url:
@@ -557,7 +558,7 @@ def run_proxy_pq_redis_flywheel_proof_pack(
             )
         )
     if include_competitor_baselines:
-        runs.extend(_competitor_baseline_rows(redis_url=redis_url))
+        runs.extend(_competitor_baseline_rows(dataset, redis_url=redis_url))
 
     summary = {
         "artifact_dir": str(artifact_dir),
@@ -571,6 +572,7 @@ def run_proxy_pq_redis_flywheel_proof_pack(
     )
     report = _render_report(summary)
     (artifact_dir / "proof_pack_report.md").write_text(report, encoding="utf-8")
+    (artifact_dir / "operating_policy_report.md").write_text(_render_operating_policy_report(summary), encoding="utf-8")
     (artifact_dir / "public_claim_card.md").write_text(_render_claim_card(summary), encoding="utf-8")
     return summary
 
@@ -791,6 +793,77 @@ def _run_proxy_pq_baseline(
     return metrics
 
 
+def _run_validated_pq_baseline(
+    dataset: dict[str, list[dict[str, Any]]],
+    artifact_dir: Path,
+    *,
+    run_id: str,
+    cosine_threshold: float = 0.999,
+) -> dict[str, Any]:
+    cache, _ = _build_pq_cache(dataset, use_redis=False)
+    for row in dataset["cache_seed"]:
+        cache.put(
+            row["prompt"],
+            value=_response_body(row["canonical_answer"]),
+            metadata={"intent_id": row["intent_id"], "seed_id": row["id"]},
+        )
+
+    encoder = cache.runtime.encoder
+    rows = dataset["evaluation"] + dataset["adversarial"]
+    exact_hits = approx_hits = false_positives = adversarial_false_positives = 0
+    rejected_candidates = 0
+    latencies: list[float] = []
+    started = time.perf_counter()
+    for row in rows:
+        row_start = time.perf_counter()
+        result = cache.get(row["prompt"])
+        if result.hit:
+            candidate_prompt = result.source_prompt or ""
+            score = _cosine_score(encoder.encode(row["prompt"]), encoder.encode(candidate_prompt))
+            if score >= cosine_threshold:
+                if result.retrieval_path == "lattice_exact":
+                    exact_hits += 1
+                else:
+                    approx_hits += 1
+                content = _content_from_body(result.value)
+                if content != row["canonical_answer"]:
+                    false_positives += 1
+                    if row["is_adversarial"]:
+                        adversarial_false_positives += 1
+            else:
+                rejected_candidates += 1
+        latencies.append((time.perf_counter() - row_start) * 1000.0)
+    elapsed = time.perf_counter() - started
+    misses = len(rows) - exact_hits - approx_hits
+    metrics = _metrics(
+        run_id=run_id,
+        total=len(rows),
+        exact_hits=exact_hits,
+        approx_hits=approx_hits,
+        misses=misses,
+        false_positives=false_positives,
+        adversarial_false_positives=adversarial_false_positives,
+        adversarial_total=len(dataset["adversarial"]),
+        latencies_ms=latencies,
+        elapsed_s=elapsed,
+        cache_entries=len(cache._entries),
+        redis_memory_mb=0.0,
+        flywheel_miss_clusters=0,
+        reviewed_answers_loaded=0,
+    )
+    metrics["validation_gate"] = "cosine"
+    metrics["validation_threshold"] = cosine_threshold
+    metrics["rejected_candidates"] = rejected_candidates
+    metrics["redis_backend"] = "none"
+    metrics["redis_persistence_verified"] = False
+    metrics["multi_proxy_shared_cache_verified"] = False
+    (artifact_dir / f"{run_id}.json").write_text(
+        json.dumps(metrics, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+    return metrics
+
+
 def _build_pq_cache(
     dataset: dict[str, list[dict[str, Any]]],
     *,
@@ -879,6 +952,15 @@ def _redis_memory_mb(redis_backend: Any, *, namespace: str) -> float:
     return total / (1024.0 * 1024.0)
 
 
+def _cosine_score(left: Any, right: Any) -> float:
+    a = np.asarray(left, dtype=np.float32).reshape(-1)
+    b = np.asarray(right, dtype=np.float32).reshape(-1)
+    denom = float(np.linalg.norm(a) * np.linalg.norm(b))
+    if denom == 0.0:
+        return 0.0
+    return float(np.dot(a, b) / denom)
+
+
 def _metrics(
     *,
     run_id: str,
@@ -964,43 +1046,11 @@ def _skipped_metrics(run_id: str, *, skip_reason: str, redis_backend: str = "non
     }
 
 
-def _competitor_baseline_rows(*, redis_url: str | None) -> list[dict[str, Any]]:
+def _competitor_baseline_rows(dataset: dict[str, list[dict[str, Any]]], *, redis_url: str | None) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    try:
-        import redisvl  # noqa: F401
-    except Exception:
-        rows.append(
-            _skipped_metrics(
-                "redisvl_direct",
-                skip_reason="redisvl is not installed; install RedisVL and rerun for a direct RedisVL semantic-cache baseline.",
-                redis_backend="real" if redis_url else "none",
-            )
-        )
-    else:
-        rows.append(
-            _skipped_metrics(
-                "redisvl_direct",
-                skip_reason="RedisVL dependency is present but direct RedisVL benchmark wiring is not implemented in this harness yet.",
-                redis_backend="real" if redis_url else "none",
-            )
-        )
+    rows.append(_run_redisvl_direct_baseline(dataset, redis_url=redis_url))
 
-    try:
-        import gptcache  # noqa: F401
-    except Exception:
-        rows.append(
-            _skipped_metrics(
-                "gptcache_direct",
-                skip_reason="gptcache is not installed; dense_cosine is the local GPTCache-shaped baseline for this run.",
-            )
-        )
-    else:
-        rows.append(
-            _skipped_metrics(
-                "gptcache_direct",
-                skip_reason="GPTCache dependency is present but direct GPTCache benchmark wiring is not implemented in this harness yet.",
-            )
-        )
+    rows.append(_run_gptcache_direct_baseline(dataset))
 
     rows.append(
         _skipped_metrics(
@@ -1010,6 +1060,165 @@ def _competitor_baseline_rows(*, redis_url: str | None) -> list[dict[str, Any]]:
         )
     )
     return rows
+
+
+def _run_gptcache_direct_baseline(dataset: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
+    try:
+        from gptcache.manager import get_data_manager
+    except Exception:
+        return _skipped_metrics(
+            "gptcache_direct",
+            skip_reason="gptcache is not installed; dense_cosine is the local GPTCache-shaped baseline for this run.",
+        )
+    manager = get_data_manager()
+    manager.flush()
+    for row in dataset["cache_seed"]:
+        manager.save(row["prompt"], row["canonical_answer"], row["prompt"])
+
+    started = time.perf_counter()
+    rows = dataset["evaluation"] + dataset["adversarial"]
+    hits = false_positives = adversarial_false_positives = 0
+    latencies: list[float] = []
+    for row in rows:
+        row_start = time.perf_counter()
+        results = manager.search(row["prompt"])
+        if results:
+            hits += 1
+            cached = results[0][1]
+            if cached != row["canonical_answer"]:
+                false_positives += 1
+                if row["is_adversarial"]:
+                    adversarial_false_positives += 1
+        latencies.append((time.perf_counter() - row_start) * 1000.0)
+    metrics = _metrics(
+        run_id="gptcache_direct",
+        total=len(rows),
+        exact_hits=hits,
+        approx_hits=0,
+        misses=len(rows) - hits,
+        false_positives=false_positives,
+        adversarial_false_positives=adversarial_false_positives,
+        adversarial_total=len(dataset["adversarial"]),
+        latencies_ms=latencies,
+        elapsed_s=time.perf_counter() - started,
+        cache_entries=len(dataset["cache_seed"]),
+        redis_memory_mb=0.0,
+        flywheel_miss_clusters=0,
+        reviewed_answers_loaded=0,
+    )
+    metrics["baseline_backend"] = "gptcache"
+    return metrics
+
+
+def _run_redisvl_direct_baseline(dataset: dict[str, list[dict[str, Any]]], *, redis_url: str | None) -> dict[str, Any]:
+    if not redis_url:
+        return _skipped_metrics(
+            "redisvl_direct",
+            skip_reason="redis_url was not provided; RedisVL direct baseline requires Redis Stack.",
+            redis_backend="none",
+        )
+    try:
+        from redisvl.index import SearchIndex
+        from redisvl.query import VectorQuery
+        from redisvl.schema import IndexSchema
+    except Exception:
+        return _skipped_metrics(
+            "redisvl_direct",
+            skip_reason="redisvl is not installed; install RedisVL and rerun for a direct RedisVL semantic-cache baseline.",
+            redis_backend="real",
+        )
+    try:
+        import redis as redis_lib
+
+        client = redis_lib.from_url(redis_url, decode_responses=False)
+        client.ping()
+        schema = IndexSchema.from_dict(
+            {
+                "index": {"name": "proof_pack_redisvl", "prefix": "proof_pack_redisvl:"},
+                "fields": [
+                    {"name": "prompt", "type": "text"},
+                    {"name": "answer", "type": "text"},
+                    {
+                        "name": "embedding",
+                        "type": "vector",
+                        "attrs": {
+                            "algorithm": "flat",
+                            "dims": 32,
+                            "distance_metric": "cosine",
+                            "datatype": "float32",
+                        },
+                    },
+                ],
+            }
+        )
+        index = SearchIndex(schema, redis_client=client)
+        index.create(overwrite=True, drop=True)
+        encoder = _ProofPackEncoder(_prompt_to_token(dataset))
+        docs = []
+        for idx, row in enumerate(dataset["cache_seed"]):
+            docs.append(
+                {
+                    "id": f"seed-{idx}",
+                    "prompt": row["prompt"],
+                    "answer": row["canonical_answer"],
+                    "embedding": encoder.encode(row["prompt"]).astype(np.float32).tobytes(),
+                }
+            )
+        index.load(docs, id_field="id")
+        rows = dataset["evaluation"] + dataset["adversarial"]
+        hits = false_positives = adversarial_false_positives = 0
+        latencies: list[float] = []
+        started = time.perf_counter()
+        for row in rows:
+            row_start = time.perf_counter()
+            query = VectorQuery(
+                vector=encoder.encode(row["prompt"]).astype(np.float32).tobytes(),
+                vector_field_name="embedding",
+                return_fields=["answer"],
+                num_results=1,
+                dtype="float32",
+            )
+            result = index.query(query)
+            cached = None
+            if result:
+                score = float(result[0].get("vector_distance", result[0].get("score", 1.0)))
+                if score <= 0.001:
+                    cached = result[0].get("answer")
+            if cached is not None:
+                hits += 1
+                if cached != row["canonical_answer"]:
+                    false_positives += 1
+                    if row["is_adversarial"]:
+                        adversarial_false_positives += 1
+            latencies.append((time.perf_counter() - row_start) * 1000.0)
+        try:
+            index.delete(drop=True)
+        except Exception:
+            pass
+        metrics = _metrics(
+            run_id="redisvl_direct",
+            total=len(rows),
+            exact_hits=0,
+            approx_hits=hits,
+            misses=len(rows) - hits,
+            false_positives=false_positives,
+            adversarial_false_positives=adversarial_false_positives,
+            adversarial_total=len(dataset["adversarial"]),
+            latencies_ms=latencies,
+            elapsed_s=time.perf_counter() - started,
+            cache_entries=len(dataset["cache_seed"]),
+            redis_memory_mb=0.0,
+            flywheel_miss_clusters=0,
+            reviewed_answers_loaded=0,
+        )
+        metrics["redis_backend"] = "redisvl"
+        return metrics
+    except Exception as exc:
+        return _skipped_metrics(
+            "redisvl_direct",
+            skip_reason=f"RedisVL direct baseline unavailable: {type(exc).__name__}: {exc}",
+            redis_backend="real",
+        )
 
 
 def _render_report(summary: dict[str, Any]) -> str:
@@ -1061,6 +1270,66 @@ def _render_report(summary: dict[str, Any]) -> str:
             "",
             "Required claim wording: LatticeMemory can reduce repeated/paraphrased upstream calls on this measured workload while reporting false positives and review behavior.",
             "Unsupported wording: LatticeMemory replaces general-purpose vector databases or guarantees accuracy on arbitrary RAG workloads.",
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def _render_operating_policy_report(summary: dict[str, Any]) -> str:
+    ok_runs = {run["run_id"]: run for run in summary["runs"] if run.get("status") == "ok"}
+    zero_fp = [
+        run
+        for run in ok_runs.values()
+        if run.get("false_positive_rate", 0.0) == 0.0
+        and run.get("adversarial_false_positive_rate", 0.0) == 0.0
+    ]
+    conservative = max(zero_fp, key=lambda row: row["hit_rate"]) if zero_fp else None
+    balanced = ok_runs.get("lattice_pq_validated_cosine")
+    aggressive = ok_runs.get("lattice_pq_local")
+    rows = [
+        (
+            "conservative_zero_fp",
+            conservative,
+            "Use when false positives are more expensive than upstream calls.",
+        ),
+        (
+            "balanced_validated_pq",
+            balanced,
+            "Target product path: PQ candidate generation with validation before serving.",
+        ),
+        (
+            "aggressive_raw_pq",
+            aggressive,
+            "Research/high-risk mode only; raw PQ can over-hit and must carry FP metrics.",
+        ),
+    ]
+    lines = [
+        "# LatticeMemory Operating Policy Report",
+        "",
+        "| Policy | Run | Hit rate | Upstream rate | FP rate | Adv FP rate | Recommendation |",
+        "|---|---|---:|---:|---:|---:|---|",
+    ]
+    for policy, run, recommendation in rows:
+        if run is None:
+            lines.append(f"| {policy} | unavailable | n/a | n/a | n/a | n/a | {recommendation} |")
+            continue
+        lines.append(
+            "| {policy} | {run_id} | {hit:.4f} | {upstream:.4f} | {fp:.4f} | {adv:.4f} | {rec} |".format(
+                policy=policy,
+                run_id=run["run_id"],
+                hit=run["hit_rate"],
+                upstream=run["upstream_call_rate"],
+                fp=run["false_positive_rate"],
+                adv=run["adversarial_false_positive_rate"],
+                rec=recommendation,
+            )
+        )
+    lines.extend(
+        [
+            "",
+            "Policy rule: never publish raw PQ hit rate without the paired false-positive and adversarial false-positive rates.",
+            "The balanced path is the one to harden into production serving if it preserves savings while reducing false positives.",
             "",
         ]
     )

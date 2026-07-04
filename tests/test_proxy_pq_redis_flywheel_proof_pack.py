@@ -89,8 +89,17 @@ def test_proxy_pq_redis_flywheel_proof_pack_writes_artifacts(tmp_path):
         "exact_string",
         "dense_cosine",
         "lattice_pq_local",
+        "lattice_pq_validated_cosine",
         "lattice_pq_redis",
     }.issubset(run_ids)
+
+    exact_row = next(row for row in loaded["runs"] if row["run_id"] == "exact_string")
+    raw_pq_row = next(row for row in loaded["runs"] if row["run_id"] == "lattice_pq_local")
+    validated_row = next(row for row in loaded["runs"] if row["run_id"] == "lattice_pq_validated_cosine")
+    assert validated_row["status"] == "ok"
+    assert validated_row["validation_gate"] == "cosine"
+    assert validated_row["hit_rate"] >= exact_row["hit_rate"]
+    assert validated_row["adversarial_false_positive_rate"] <= raw_pq_row["adversarial_false_positive_rate"]
 
     redis_row = next(row for row in loaded["runs"] if row["run_id"] == "lattice_pq_redis")
     assert redis_row["status"] == "ok"
@@ -101,6 +110,12 @@ def test_proxy_pq_redis_flywheel_proof_pack_writes_artifacts(tmp_path):
 
     assert summary["artifact_dir"] == str(tmp_path)
     assert "LatticeMemory Proxy + PQ + Redis + Flywheel Proof Pack" in report_path.read_text(encoding="utf-8")
+    policy_report = tmp_path / "operating_policy_report.md"
+    assert policy_report.exists()
+    policy_text = policy_report.read_text(encoding="utf-8")
+    assert "conservative_zero_fp" in policy_text
+    assert "balanced_validated_pq" in policy_text
+    assert "aggressive_raw_pq" in policy_text
 
 
 def test_external_support_dataset_jsonl_round_trips_required_splits(tmp_path):

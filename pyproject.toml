@@ -24,6 +24,7 @@ hf = ["datasets>=2.0.0"]
 proxy = ["fastapi", "uvicorn", "httpx"]
 redis = ["redis>=4.0.0"]
 training = ["datasets>=2.0.0", "tqdm"]
+proofpack = ["datasets>=2.0.0", "gptcache>=0.1.44", "redis>=5.0.0", "redisvl>=0.23.0"]
 
 [project.scripts]
 lattice = "latticememory.cli:main"

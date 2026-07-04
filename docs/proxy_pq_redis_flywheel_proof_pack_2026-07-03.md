@@ -1,7 +1,7 @@
 # LatticeMemory Proxy + PQ + Redis + Flywheel Proof Pack
 
 **Date:** 2026-07-03
-**Status:** Implemented local proof-pack harness plus first artifact run
+**Status:** Implemented proof-pack harness, public Bitext run, validated PQ policy, and real Redis run
 **Purpose:** Produce one public, evidence-backed proof pack for LatticeMemory as a semantic cache and AI memory infrastructure layer.
 
 ---
@@ -27,10 +27,6 @@ First artifact run:
 | dense_cosine | 0.8000 | 0.2000 | 0.0000 | 0.0000 | 0.0589 | 0.0000 | 0 |
 | lattice_pq_local | 0.9800 | 0.0200 | 0.0000 | 0.0000 | 2.7474 | 0.0000 | 1 |
 | lattice_pq_redis | 0.9800 | 0.0200 | 0.0000 | 0.0000 | 2.7631 | 0.0094 | 1 |
-
-Next production hardening step: run the same harness against a real Redis server
-and a larger externally sourced support-query dataset before using these numbers
-as public benchmark claims.
 
 Evidence-hardening run:
 
@@ -62,22 +58,36 @@ Third-party support dataset run:
 - Available source rows: 26,872 customer-service Q/A rows
 - Source fields used: `flags`, `instruction`, `category`, `intent`, `response`
 - Proof-pack split: 80 seed rows, 240 calibration rows, 640 evaluation rows, 160 adversarial rows
-- Real Redis result on this machine: skipped, Redis server unavailable
+- Real Redis result on this machine: verified with WSL Redis 7.0.15 at `redis://localhost:6380/15`
+- Direct baselines: GPTCache direct exact-cache baseline ran; RedisVL direct attempted but skipped because plain Redis lacks RediSearch (`FT._LIST`)
 
 | Run | Hit rate | Upstream rate | FP rate | Adv FP rate | Redis MB | Shared cache |
 |---|---:|---:|---:|---:|---:|---|
 | exact_string | 0.3350 | 0.6650 | 0.0000 | 0.0000 | 0.0000 | n/a |
 | dense_cosine | 1.0000 | 0.0000 | 0.0000 | 0.0000 | 0.0000 | n/a |
 | lattice_pq_local | 1.0000 | 0.0000 | 0.0338 | 0.1500 | 0.0000 | false |
+| lattice_pq_validated_cosine | 0.9663 | 0.0338 | 0.0000 | 0.0000 | 0.0000 | false |
 | lattice_pq_redis | 1.0000 | 0.0000 | 0.0338 | 0.1500 | 0.0490 | true |
-| lattice_pq_redis_real | skipped | skipped | skipped | skipped | skipped | skipped |
+| lattice_pq_redis_real | 1.0000 | 0.0000 | 0.0338 | 0.1500 | 0.0489 | true |
+| gptcache_direct | 0.3350 | 0.6650 | 0.0000 | 0.0000 | 0.0000 | n/a |
+| redisvl_direct | skipped | skipped | skipped | skipped | skipped | skipped |
 
 This removes the prior caveat that the external-format run was still generated
 from local synthetic rows. The remaining caveat is different and more useful:
 the third-party Bitext run shows that unvalidated PQ serving can over-hit and
-produce measurable adversarial false positives. Public claims should therefore
-lead with measured cache behavior and false-positive reporting, not raw PQ hit
+produce measurable adversarial false positives. Cosine validation keeps most of
+the PQ hit-rate lift (`0.9663`) while driving both measured false-positive rates
+to `0.0000` on this split. Public claims should therefore lead with measured
+cache behavior, validation policy, and false-positive reporting, not raw PQ hit
 rate.
+
+Operating policy from this artifact:
+
+| Policy | Run | Hit rate | FP rate | Adv FP rate | Use |
+|---|---|---:|---:|---:|---|
+| conservative_zero_fp | dense_cosine | 1.0000 | 0.0000 | 0.0000 | safest baseline |
+| balanced_validated_pq | lattice_pq_validated_cosine | 0.9663 | 0.0000 | 0.0000 | target product path |
+| aggressive_raw_pq | lattice_pq_local | 1.0000 | 0.0338 | 0.1500 | research/high-risk only |
 
 ---
 
