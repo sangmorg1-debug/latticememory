@@ -1,7 +1,7 @@
 # LatticeMemory Proxy + PQ + Redis + Flywheel Proof Pack
 
 **Date:** 2026-07-03
-**Status:** Implemented proof-pack harness, public Bitext run, validated PQ policy, and real Redis run
+**Status:** Implemented proof-pack harness, public Bitext run, validated PQ policy, real Redis run, and RedisVL direct baseline under Redis Stack
 **Purpose:** Produce one public, evidence-backed proof pack for LatticeMemory as a semantic cache and AI memory infrastructure layer.
 
 ---
@@ -58,8 +58,9 @@ Third-party support dataset run:
 - Available source rows: 26,872 customer-service Q/A rows
 - Source fields used: `flags`, `instruction`, `category`, `intent`, `response`
 - Proof-pack split: 80 seed rows, 240 calibration rows, 640 evaluation rows, 160 adversarial rows
-- Real Redis result on this machine: verified with WSL Redis 7.0.15 at `redis://localhost:6380/15`
-- Direct baselines: GPTCache direct exact-cache baseline ran; RedisVL direct attempted but skipped because plain Redis lacks RediSearch (`FT._LIST`)
+- Real Redis result on this machine: verified with `redis/redis-stack-server:latest` via Docker Engine inside WSL at `redis://localhost:6382/0`
+- Direct baselines: RedisVL direct ran against Redis Stack; GPTCache direct exact-cache baseline ran; Upstash remained skipped because credentials were not provided
+- RedisVL note: Redis Stack index creation required database 0 in this environment; `redis://localhost:6382/15` failed with `Cannot create index on db != 0`
 
 | Run | Hit rate | Upstream rate | FP rate | Adv FP rate | Redis MB | Shared cache |
 |---|---:|---:|---:|---:|---:|---|
@@ -68,9 +69,9 @@ Third-party support dataset run:
 | lattice_pq_local | 1.0000 | 0.0000 | 0.0338 | 0.1500 | 0.0000 | false |
 | lattice_pq_validated_cosine | 0.9663 | 0.0338 | 0.0000 | 0.0000 | 0.0000 | false |
 | lattice_pq_redis | 1.0000 | 0.0000 | 0.0338 | 0.1500 | 0.0490 | true |
-| lattice_pq_redis_real | 1.0000 | 0.0000 | 0.0338 | 0.1500 | 0.0489 | true |
+| lattice_pq_redis_real | 1.0000 | 0.0000 | 0.0338 | 0.1500 | 0.0490 | true |
+| redisvl_direct | 1.0000 | 0.0000 | 0.0000 | 0.0000 | 0.0000 | n/a |
 | gptcache_direct | 0.3350 | 0.6650 | 0.0000 | 0.0000 | 0.0000 | n/a |
-| redisvl_direct | skipped | skipped | skipped | skipped | skipped | skipped |
 
 This removes the prior caveat that the external-format run was still generated
 from local synthetic rows. The remaining caveat is different and more useful:
