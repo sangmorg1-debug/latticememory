@@ -13,7 +13,7 @@ import math
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 
@@ -546,11 +546,38 @@ def run_proxy_pq_redis_flywheel_proof_pack(
 
     runs: list[dict[str, Any]] = []
 
-    def record(row: dict[str, Any]) -> dict[str, Any]:
-        runs.append(row)
+    def write_progress(row: dict[str, Any]) -> None:
         if progress_file is not None:
-            progress_row = {
+            with progress_file.open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(row, sort_keys=True) + "\n")
+
+    def record_run(run_id: str, run: Callable[[], dict[str, Any]]) -> dict[str, Any]:
+        write_progress(
+            {
+                "run_id": run_id,
+                "event": "started",
+                "status": "running",
+                "elapsed_s": 0.0,
+            }
+        )
+        try:
+            row = run()
+        except Exception as exc:
+            write_progress(
+                {
+                    "run_id": run_id,
+                    "event": "failed",
+                    "status": "error",
+                    "error": f"{type(exc).__name__}: {exc}",
+                    "elapsed_s": 0.0,
+                }
+            )
+            raise
+        runs.append(row)
+        write_progress(
+            {
                 "run_id": row.get("run_id"),
+                "event": "finished",
                 "status": row.get("status"),
                 "elapsed_s": row.get("elapsed_s", 0.0),
                 "hit_rate": row.get("hit_rate", 0.0),
@@ -559,18 +586,27 @@ def run_proxy_pq_redis_flywheel_proof_pack(
                 "adversarial_false_positive_rate": row.get("adversarial_false_positive_rate", 0.0),
                 "redis_memory_mb": row.get("redis_memory_mb", 0.0),
             }
-            with progress_file.open("a", encoding="utf-8") as fh:
-                fh.write(json.dumps(progress_row, sort_keys=True) + "\n")
+        )
         return row
 
-    record(run_exact_string_baseline(dataset))
-    record(_run_dense_cosine_baseline(dataset))
-    record(_run_proxy_pq_baseline(dataset, artifact_dir, run_id="lattice_pq_local", use_redis=False))
-    record(_run_validated_pq_baseline(dataset, artifact_dir, run_id="lattice_pq_validated_cosine"))
-    record(_run_proxy_pq_baseline(dataset, artifact_dir, run_id="lattice_pq_redis", use_redis=True))
+    record_run("exact_string", lambda: run_exact_string_baseline(dataset))
+    record_run("dense_cosine", lambda: _run_dense_cosine_baseline(dataset))
+    record_run(
+        "lattice_pq_local",
+        lambda: _run_proxy_pq_baseline(dataset, artifact_dir, run_id="lattice_pq_local", use_redis=False),
+    )
+    record_run(
+        "lattice_pq_validated_cosine",
+        lambda: _run_validated_pq_baseline(dataset, artifact_dir, run_id="lattice_pq_validated_cosine"),
+    )
+    record_run(
+        "lattice_pq_redis",
+        lambda: _run_proxy_pq_baseline(dataset, artifact_dir, run_id="lattice_pq_redis", use_redis=True),
+    )
     if redis_url:
-        record(
-            _run_proxy_pq_baseline(
+        record_run(
+            "lattice_pq_redis_real",
+            lambda: _run_proxy_pq_baseline(
                 dataset,
                 artifact_dir,
                 run_id="lattice_pq_redis_real",
@@ -579,8 +615,9 @@ def run_proxy_pq_redis_flywheel_proof_pack(
                 redis_namespace=redis_namespace,
             )
         )
-        record(
-            _run_validated_pq_baseline(
+        record_run(
+            "lattice_pq_redis_validated_cosine",
+            lambda: _run_validated_pq_baseline(
                 dataset,
                 artifact_dir,
                 run_id="lattice_pq_redis_validated_cosine",
@@ -590,8 +627,8 @@ def run_proxy_pq_redis_flywheel_proof_pack(
             )
         )
     if include_competitor_baselines:
-        for row in _competitor_baseline_rows(dataset, redis_url=redis_url):
-            record(row)
+        for runner in _competitor_baseline_runners(dataset, redis_url=redis_url):
+            record_run(runner[0], runner[1])
 
     summary = {
         "artifact_dir": str(artifact_dir),
@@ -1106,20 +1143,23 @@ def _skipped_metrics(run_id: str, *, skip_reason: str, redis_backend: str = "non
     }
 
 
-def _competitor_baseline_rows(dataset: dict[str, list[dict[str, Any]]], *, redis_url: str | None) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
-    rows.append(_run_redisvl_direct_baseline(dataset, redis_url=redis_url))
-
-    rows.append(_run_gptcache_direct_baseline(dataset))
-
-    rows.append(
-        _skipped_metrics(
+def _competitor_baseline_runners(
+    dataset: dict[str, list[dict[str, Any]]],
+    *,
+    redis_url: str | None,
+) -> list[tuple[str, Callable[[], dict[str, Any]]]]:
+    return [
+        ("redisvl_direct", lambda: _run_redisvl_direct_baseline(dataset, redis_url=redis_url)),
+        ("gptcache_direct", lambda: _run_gptcache_direct_baseline(dataset)),
+        (
             "upstash_semantic_cache",
-            skip_reason="Upstash credentials were not provided; remote semantic-cache baseline skipped.",
-            redis_backend="remote",
-        )
-    )
-    return rows
+            lambda: _skipped_metrics(
+                "upstash_semantic_cache",
+                skip_reason="Upstash credentials were not provided; remote semantic-cache baseline skipped.",
+                redis_backend="remote",
+            ),
+        ),
+    ]
 
 
 def _run_gptcache_direct_baseline(dataset: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:

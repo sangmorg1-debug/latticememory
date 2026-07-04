@@ -253,9 +253,14 @@ def test_proof_pack_writes_progress_profile_rows(tmp_path):
         for line in progress_path.read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
-    assert [row["run_id"] for row in progress_rows] == [row["run_id"] for row in summary["runs"]]
-    assert all(row["status"] in {"ok", "skipped"} for row in progress_rows)
-    assert all(row["elapsed_s"] >= 0.0 for row in progress_rows)
+    run_ids = [row["run_id"] for row in summary["runs"]]
+    assert [row["run_id"] for row in progress_rows[::2]] == run_ids
+    assert [row["event"] for row in progress_rows[::2]] == ["started"] * len(run_ids)
+    assert [row["run_id"] for row in progress_rows[1::2]] == run_ids
+    assert [row["event"] for row in progress_rows[1::2]] == ["finished"] * len(run_ids)
+    assert all(row["status"] == "running" for row in progress_rows[::2])
+    assert all(row["status"] in {"ok", "skipped"} for row in progress_rows[1::2])
+    assert all(row["elapsed_s"] >= 0.0 for row in progress_rows[1::2])
 
 
 def test_real_redis_persistence_verification_allows_duplicate_seed_cache_keys(tmp_path):
