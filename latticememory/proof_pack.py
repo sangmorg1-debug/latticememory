@@ -1322,7 +1322,7 @@ def _render_operating_policy_report(summary: dict[str, Any]) -> str:
         and run.get("adversarial_false_positive_rate", 0.0) == 0.0
     ]
     conservative = max(zero_fp, key=lambda row: row["hit_rate"]) if zero_fp else None
-    balanced = ok_runs.get("lattice_pq_validated_cosine")
+    balanced = ok_runs.get("lattice_pq_redis_validated_cosine") or ok_runs.get("lattice_pq_validated_cosine")
     aggressive = ok_runs.get("lattice_pq_local")
     rows = [
         (

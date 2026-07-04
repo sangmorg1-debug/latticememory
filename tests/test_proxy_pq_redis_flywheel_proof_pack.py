@@ -228,6 +228,9 @@ def test_proof_pack_reports_validated_real_redis_pq_when_reachable(tmp_path):
     assert validated_row["adversarial_false_positive_rate"] <= raw_row["adversarial_false_positive_rate"]
     assert (tmp_path / "lattice_pq_redis_validated_cosine.json").exists()
 
+    policy_text = (tmp_path / "operating_policy_report.md").read_text(encoding="utf-8")
+    assert "balanced_validated_pq | lattice_pq_redis_validated_cosine" in policy_text
+
 
 def test_redis_memory_mb_counts_lattice_redis_store_client_namespace():
     from latticememory.proof_pack import _InMemoryRedis, _redis_memory_mb
