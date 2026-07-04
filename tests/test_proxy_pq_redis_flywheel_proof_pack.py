@@ -232,6 +232,55 @@ def test_proof_pack_reports_validated_real_redis_pq_when_reachable(tmp_path):
     assert "balanced_validated_pq | lattice_pq_redis_validated_cosine" in policy_text
 
 
+def test_real_redis_persistence_verification_allows_duplicate_seed_cache_keys(tmp_path):
+    from latticememory.proof_pack import _InMemoryRedis
+
+    records = []
+    for intent in ("cancel_order", "track_refund", "payment_issue"):
+        for row_idx in range(8):
+            records.append(
+                {
+                    "instruction": f"third party question {row_idx} for {intent}",
+                    "response": f"canonical support response for {intent}",
+                    "intent": intent,
+                    "category": "SUPPORT",
+                    "flags": "synthetic-test",
+                }
+            )
+    dataset = build_support_dataset_from_qa_records(
+        records,
+        seed_count=9,
+        calibration_count=6,
+        evaluation_count=18,
+        adversarial_count=6,
+        source_name="duplicate_seed_fixture",
+    )
+    dataset_path = tmp_path / "duplicate_seed_fixture.jsonl"
+    with dataset_path.open("w", encoding="utf-8") as fh:
+        for rows in dataset.values():
+            for row in rows:
+                fh.write(json.dumps(row) + "\n")
+    redis_client = _InMemoryRedis()
+    with patch("redis.from_url", return_value=redis_client):
+        summary = run_proxy_pq_redis_flywheel_proof_pack(
+            tmp_path,
+            dataset_path=dataset_path,
+            redis_url="redis://localhost:6379/15",
+            redis_namespace="duplicate-seed-proof",
+        )
+
+    raw_row = next(row for row in summary["runs"] if row["run_id"] == "lattice_pq_redis_real")
+    validated_row = next(
+        row for row in summary["runs"] if row["run_id"] == "lattice_pq_redis_validated_cosine"
+    )
+    assert raw_row["cache_entries"] < 9
+    assert raw_row["multi_proxy_shared_cache_verified"] is True
+    assert raw_row["redis_persistence_verified"] is True
+    assert validated_row["cache_entries"] < 9
+    assert validated_row["multi_proxy_shared_cache_verified"] is True
+    assert validated_row["redis_persistence_verified"] is True
+
+
 def test_redis_memory_mb_counts_lattice_redis_store_client_namespace():
     from latticememory.proof_pack import _InMemoryRedis, _redis_memory_mb
     from latticememory.redis_store import LatticeRedisStore

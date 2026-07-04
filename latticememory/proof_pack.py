@@ -794,7 +794,7 @@ def _run_proxy_pq_baseline(
         reviewed_answers_loaded=reviewed_loaded,
     )
     metrics["redis_backend"] = "real" if redis_url else ("in_memory" if use_redis else "none")
-    metrics["redis_persistence_verified"] = bool(use_redis and len(cache._entries) >= len(dataset["cache_seed"]))
+    metrics["redis_persistence_verified"] = bool(use_redis and shared_cache_verified)
     metrics["multi_proxy_shared_cache_verified"] = shared_cache_verified
     (artifact_dir / f"{run_id}.json").write_text(
         json.dumps(metrics, indent=2, sort_keys=True),
@@ -890,7 +890,7 @@ def _run_validated_pq_baseline(
     metrics["validation_threshold"] = cosine_threshold
     metrics["rejected_candidates"] = rejected_candidates
     metrics["redis_backend"] = "real" if redis_url else ("in_memory" if use_redis else "none")
-    metrics["redis_persistence_verified"] = bool(use_redis and len(cache._entries) >= len(dataset["cache_seed"]))
+    metrics["redis_persistence_verified"] = bool(use_redis and shared_cache_verified)
     metrics["multi_proxy_shared_cache_verified"] = shared_cache_verified
     (artifact_dir / f"{run_id}.json").write_text(
         json.dumps(metrics, indent=2, sort_keys=True),
