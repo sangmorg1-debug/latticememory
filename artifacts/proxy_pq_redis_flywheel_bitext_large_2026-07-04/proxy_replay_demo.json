@@ -1,0 +1,17 @@
+{
+  "adversarial_false_positive_rate": 0.0,
+  "cache_cosine_threshold": 0.999,
+  "dataset_path": "artifacts\\proxy_pq_redis_flywheel_bitext_large_2026-07-04\\bitext_support_dataset_large.jsonl",
+  "elapsed_s": 26.45903430006001,
+  "false_positive_rate": 0.0,
+  "hit_rate": 0.9916666666666667,
+  "hits": 5950,
+  "latency_ms_avg": 4.3825189173803665,
+  "misses": 50,
+  "redis_namespace": "proof-pack-live-demo-2026-07-04",
+  "redis_url": "redis://localhost:6382/0",
+  "rejected_candidates": 50,
+  "total_requests": 6000,
+  "upstream_call_rate": 0.008333333333333333,
+  "upstream_calls": 50
+}

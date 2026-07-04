@@ -119,6 +119,44 @@ claim is the auditable operating-policy matrix: raw PQ over-hits, validated PQ
 trades 4.0% upstream calls for zero measured false positives on this split, and
 all rows report latency, Redis memory, and false-positive rates together.
 
+Large Redis Stack validated-PQ run:
+
+- Artifact directory: `artifacts/proxy_pq_redis_flywheel_bitext_large_2026-07-04/`
+- Source dataset: `bitext/Bitext-customer-support-llm-chatbot-training-dataset`
+- Proof-pack split: 500 seed rows, 1,000 calibration rows, 5,000 evaluation rows, 1,000 adversarial rows
+- Redis runtime: `redis/redis-stack-server:latest` via Docker Engine inside WSL at `redis://localhost:6382/0`
+- Progress profile: `proof_pack_progress.jsonl` records every completed row so long Redis runs are no longer opaque
+- Live proxy replay demo: `proxy_replay_demo.json` and `proxy_replay_demo.md`
+
+| Run | Hit rate | Upstream rate | FP rate | Adv FP rate | Avg ms | Redis MB |
+|---|---:|---:|---:|---:|---:|---:|
+| exact_string | 0.3947 | 0.6053 | 0.0000 | 0.0000 | 0.000 | 0.0000 |
+| dense_cosine | 1.0000 | 0.0000 | 0.0000 | 0.0000 | 0.212 | 0.0000 |
+| lattice_pq_local | 1.0000 | 0.0000 | 0.0188 | 0.1110 | 3.089 | 0.0000 |
+| lattice_pq_validated_cosine | 0.9812 | 0.0188 | 0.0000 | 0.0000 | 0.311 | 0.0000 |
+| lattice_pq_redis | 1.0000 | 0.0000 | 0.0188 | 0.1110 | 3.298 | 0.0523 |
+| lattice_pq_redis_real | 1.0000 | 0.0000 | 0.0188 | 0.1110 | 4.662 | 0.0534 |
+| lattice_pq_redis_validated_cosine | 0.9812 | 0.0188 | 0.0000 | 0.0000 | 1.021 | 0.0534 |
+| redisvl_direct | 1.0000 | 0.0000 | 0.0000 | 0.0000 | 0.796 | 0.0000 |
+| gptcache_direct | 0.3947 | 0.6053 | 0.0000 | 0.0000 | 0.001 | 0.0000 |
+
+The raw real-Redis row that previously appeared to stall completed in 28.145s
+on this run. The progress profile shows that it was simply the slowest proxy
+stage, not a deadlock. The validated Redis PQ row completed in 6.126s and kept
+normal and adversarial false-positive rates at `0.0000`.
+
+Live proxy replay result:
+
+| Metric | Value |
+|---|---:|
+| Total requests | 6,000 |
+| Hit rate | 0.9917 |
+| Upstream call rate | 0.0083 |
+| False-positive rate | 0.0000 |
+| Adversarial false-positive rate | 0.0000 |
+| Rejected candidates | 50 |
+| Avg latency ms | 4.383 |
+
 ---
 
 ## Claim Boundary
