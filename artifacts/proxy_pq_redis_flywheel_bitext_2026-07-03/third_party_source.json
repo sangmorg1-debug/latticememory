@@ -1,0 +1,20 @@
+{
+  "dataset": "bitext/Bitext-customer-support-llm-chatbot-training-dataset",
+  "fields": [
+    "flags",
+    "instruction",
+    "category",
+    "intent",
+    "response"
+  ],
+  "note": "Public third-party customer-service Q/A dataset converted through build_support_dataset_from_qa_records.",
+  "proof_pack_jsonl": "bitext_support_dataset.jsonl",
+  "rows_available": 26872,
+  "split_rows": {
+    "adversarial": 160,
+    "cache_seed": 80,
+    "calibration": 240,
+    "evaluation": 640
+  },
+  "url": "https://huggingface.co/datasets/bitext/Bitext-customer-support-llm-chatbot-training-dataset"
+}

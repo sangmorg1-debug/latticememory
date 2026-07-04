@@ -54,6 +54,31 @@ PQ row only with its measured false-positive rate attached. The generated claim
 card follows that split: `public_claim_card.md` reports `dense_cosine` as the
 safest zero-FP row and `lattice_pq_local` as the highest-hit row.
 
+Third-party support dataset run:
+
+- Artifact directory: `artifacts/proxy_pq_redis_flywheel_bitext_2026-07-03/`
+- Source dataset: `bitext/Bitext-customer-support-llm-chatbot-training-dataset`
+- Source URL: <https://huggingface.co/datasets/bitext/Bitext-customer-support-llm-chatbot-training-dataset>
+- Available source rows: 26,872 customer-service Q/A rows
+- Source fields used: `flags`, `instruction`, `category`, `intent`, `response`
+- Proof-pack split: 80 seed rows, 240 calibration rows, 640 evaluation rows, 160 adversarial rows
+- Real Redis result on this machine: skipped, Redis server unavailable
+
+| Run | Hit rate | Upstream rate | FP rate | Adv FP rate | Redis MB | Shared cache |
+|---|---:|---:|---:|---:|---:|---|
+| exact_string | 0.3350 | 0.6650 | 0.0000 | 0.0000 | 0.0000 | n/a |
+| dense_cosine | 1.0000 | 0.0000 | 0.0000 | 0.0000 | 0.0000 | n/a |
+| lattice_pq_local | 1.0000 | 0.0000 | 0.0338 | 0.1500 | 0.0000 | false |
+| lattice_pq_redis | 1.0000 | 0.0000 | 0.0338 | 0.1500 | 0.0490 | true |
+| lattice_pq_redis_real | skipped | skipped | skipped | skipped | skipped | skipped |
+
+This removes the prior caveat that the external-format run was still generated
+from local synthetic rows. The remaining caveat is different and more useful:
+the third-party Bitext run shows that unvalidated PQ serving can over-hit and
+produce measurable adversarial false positives. Public claims should therefore
+lead with measured cache behavior and false-positive reporting, not raw PQ hit
+rate.
+
 ---
 
 ## Claim Boundary

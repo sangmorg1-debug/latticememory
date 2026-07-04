@@ -350,6 +350,120 @@ def build_support_dataset(
     }
 
 
+def build_support_dataset_from_qa_records(
+    records: list[dict[str, Any]],
+    *,
+    seed_count: int = 80,
+    calibration_count: int = 240,
+    evaluation_count: int = 640,
+    adversarial_count: int = 160,
+    source_name: str = "third_party_qa",
+) -> dict[str, list[dict[str, Any]]]:
+    """Convert third-party support Q/A rows into the proof-pack split schema.
+
+    Expected input fields are compatible with the public Bitext customer-support
+    dataset: ``instruction``, ``response``, ``intent``, and ``category``.
+    """
+
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for idx, record in enumerate(records):
+        prompt = str(record.get("instruction", "")).strip()
+        answer = str(record.get("response", "")).strip()
+        intent = str(record.get("intent", "")).strip()
+        category = str(record.get("category", "")).strip()
+        if not prompt or not answer or not intent:
+            continue
+        normalized = {
+            "source_record_id": str(record.get("id", idx)),
+            "prompt": prompt,
+            "answer": answer,
+            "intent_id": intent,
+            "category": category or "unknown",
+            "flags": record.get("flags") or record.get("tags") or "",
+        }
+        grouped.setdefault(intent, []).append(normalized)
+    if len(grouped) < 2:
+        raise ValueError("third-party proof-pack dataset requires at least two intents")
+
+    intents = sorted(grouped)
+    canonical_answer = {intent: grouped[intent][0]["answer"] for intent in intents}
+    seed_prompt = {intent: grouped[intent][0]["prompt"] for intent in intents}
+    seed_id = {intent: f"seed-third-party-{idx:04d}" for idx, intent in enumerate(intents)}
+
+    cache_seed: list[dict[str, Any]] = []
+    for idx, intent in enumerate(_cycle_values(intents, seed_count)):
+        source = grouped[intent][idx // len(intents) % len(grouped[intent])]
+        cache_seed.append(
+            _third_party_row(
+                row_id=f"seed-third-party-{idx:04d}",
+                split="cache_seed",
+                source=source,
+                prompt=source["prompt"],
+                canonical_answer=canonical_answer[intent],
+                expected_cache_id=seed_id[intent],
+                source_name=source_name,
+            )
+        )
+
+    calibration = []
+    calibration_sources = _non_seed_sources(grouped, seed_prompt)
+    for idx, source in enumerate(_cycle_values(calibration_sources, calibration_count)):
+        calibration.append(
+            _third_party_row(
+                row_id=f"calibration-third-party-{idx:04d}",
+                split="calibration",
+                source=source,
+                prompt=source["prompt"],
+                canonical_answer=canonical_answer[source["intent_id"]],
+                expected_cache_id=seed_id[source["intent_id"]],
+                source_name=source_name,
+                is_paraphrase=True,
+            )
+        )
+
+    evaluation = []
+    evaluation_sources = _non_seed_sources(grouped, seed_prompt)
+    for idx, source in enumerate(_cycle_values(evaluation_sources, evaluation_count)):
+        is_repeat = idx % 4 == 0
+        prompt = seed_prompt[source["intent_id"]] if is_repeat else source["prompt"]
+        evaluation.append(
+            _third_party_row(
+                row_id=f"evaluation-third-party-{idx:04d}",
+                split="evaluation",
+                source=source,
+                prompt=prompt,
+                canonical_answer=canonical_answer[source["intent_id"]],
+                expected_cache_id=seed_id[source["intent_id"]],
+                source_name=source_name,
+                is_repeat=is_repeat,
+                is_paraphrase=not is_repeat,
+            )
+        )
+
+    adversarial = []
+    adversarial_sources = _adversarial_sources(grouped)
+    for idx, source in enumerate(_cycle_values(adversarial_sources, adversarial_count)):
+        adversarial.append(
+            _third_party_row(
+                row_id=f"adversarial-third-party-{idx:04d}",
+                split="adversarial",
+                source=source,
+                prompt=source["prompt"],
+                canonical_answer=canonical_answer[source["intent_id"]],
+                expected_cache_id=None,
+                source_name=source_name,
+                is_adversarial=True,
+            )
+        )
+
+    return {
+        "cache_seed": cache_seed,
+        "calibration": calibration,
+        "evaluation": evaluation,
+        "adversarial": adversarial,
+    }
+
+
 def load_support_dataset_jsonl(path: str | Path) -> dict[str, list[dict[str, Any]]]:
     """Load an external proof-pack dataset from JSONL and validate its shape."""
 
@@ -1084,8 +1198,62 @@ def _row(
     }
 
 
+def _third_party_row(
+    *,
+    row_id: str,
+    split: str,
+    source: dict[str, Any],
+    prompt: str,
+    canonical_answer: str,
+    expected_cache_id: str | None,
+    source_name: str,
+    is_repeat: bool = False,
+    is_paraphrase: bool = False,
+    is_adversarial: bool = False,
+) -> dict[str, Any]:
+    return {
+        "id": row_id,
+        "split": split,
+        "intent_id": source["intent_id"],
+        "prompt": prompt,
+        "canonical_answer": canonical_answer,
+        "expected_cache_id": expected_cache_id,
+        "is_repeat": is_repeat,
+        "is_paraphrase": is_paraphrase,
+        "is_adversarial": is_adversarial,
+        "source": source_name,
+        "source_record_id": source["source_record_id"],
+        "source_category": source["category"],
+        "source_flags": source["flags"],
+    }
+
+
 def _cycle_intents(count: int) -> list[_Intent]:
     return [_INTENTS[idx % len(_INTENTS)] for idx in range(count)]
+
+
+def _cycle_values(values: list[Any], count: int) -> list[Any]:
+    if not values and count:
+        raise ValueError("cannot cycle an empty value list")
+    return [values[idx % len(values)] for idx in range(count)]
+
+
+def _non_seed_sources(
+    grouped: dict[str, list[dict[str, Any]]],
+    seed_prompt: dict[str, str],
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for intent in sorted(grouped):
+        alternatives = [row for row in grouped[intent] if row["prompt"] != seed_prompt[intent]]
+        rows.extend(alternatives or grouped[intent])
+    return rows
+
+
+def _adversarial_sources(grouped: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for intent in sorted(grouped):
+        rows.extend(grouped[intent][1:4] or grouped[intent])
+    return rows
 
 
 def _seed_id_map(seed_count: int) -> dict[str, str]:

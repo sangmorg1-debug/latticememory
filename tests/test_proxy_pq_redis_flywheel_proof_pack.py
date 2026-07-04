@@ -4,6 +4,7 @@ import json
 from unittest.mock import patch
 
 from latticememory.proof_pack import (
+    build_support_dataset_from_qa_records,
     build_support_dataset,
     load_support_dataset_jsonl,
     run_exact_string_baseline,
@@ -124,6 +125,42 @@ def test_external_support_dataset_jsonl_round_trips_required_splits(tmp_path):
         "adversarial": 8,
     }
     assert loaded["evaluation"][0]["source"] == "external_jsonl"
+
+
+def test_third_party_qa_records_build_public_support_splits():
+    records = []
+    for intent_idx, intent in enumerate(("cancel_order", "track_refund", "payment_issue")):
+        for row_idx in range(8):
+            records.append(
+                {
+                    "instruction": f"third party question {row_idx} for {intent}",
+                    "response": f"canonical support response for {intent}",
+                    "intent": intent,
+                    "category": "ORDER" if intent == "cancel_order" else "PAYMENT",
+                    "flags": "synthetic-test",
+                }
+            )
+
+    dataset = build_support_dataset_from_qa_records(
+        records,
+        seed_count=3,
+        calibration_count=6,
+        evaluation_count=9,
+        adversarial_count=3,
+        source_name="bitext_fixture",
+    )
+
+    assert {split: len(rows) for split, rows in dataset.items()} == {
+        "cache_seed": 3,
+        "calibration": 6,
+        "evaluation": 9,
+        "adversarial": 3,
+    }
+    assert all(row["source"] == "bitext_fixture" for rows in dataset.values() for row in rows)
+    assert any(row["is_repeat"] for row in dataset["evaluation"])
+    assert any(row["is_paraphrase"] for row in dataset["evaluation"])
+    assert all(row["is_adversarial"] for row in dataset["adversarial"])
+    assert all(row["source_category"] for rows in dataset.values() for row in rows)
 
 
 def test_proof_pack_reports_real_redis_shared_cache_when_reachable(tmp_path):
