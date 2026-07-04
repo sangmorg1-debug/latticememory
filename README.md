@@ -213,6 +213,10 @@ OPENAI_API_KEY=sk-... docker-compose up
 
 Point your OpenAI client at `http://localhost:8000` — no other code changes needed.
 
+For the Redis Stack proof/demo path, including the validated PQ proof pack,
+live proxy replay, `/v1/analytics`, and public claim wording, see
+[`docs/public_proxy_demo_runbook_2026-07-04.md`](docs/public_proxy_demo_runbook_2026-07-04.md).
+
 **Features:**
 
 - `X-Lattice-Cache: HIT/MISS` and `X-Lattice-Savings-USD` on every response
