@@ -232,6 +232,32 @@ def test_proof_pack_reports_validated_real_redis_pq_when_reachable(tmp_path):
     assert "balanced_validated_pq | lattice_pq_redis_validated_cosine" in policy_text
 
 
+def test_proof_pack_writes_progress_profile_rows(tmp_path):
+    from latticememory.proof_pack import _InMemoryRedis
+
+    redis_client = _InMemoryRedis()
+    progress_path = tmp_path / "progress.jsonl"
+    with patch("redis.from_url", return_value=redis_client):
+        summary = run_proxy_pq_redis_flywheel_proof_pack(
+            tmp_path,
+            seed_count=8,
+            calibration_count=8,
+            evaluation_count=24,
+            adversarial_count=8,
+            redis_url="redis://localhost:6379/15",
+            progress_path=progress_path,
+        )
+
+    progress_rows = [
+        json.loads(line)
+        for line in progress_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert [row["run_id"] for row in progress_rows] == [row["run_id"] for row in summary["runs"]]
+    assert all(row["status"] in {"ok", "skipped"} for row in progress_rows)
+    assert all(row["elapsed_s"] >= 0.0 for row in progress_rows)
+
+
 def test_real_redis_persistence_verification_allows_duplicate_seed_cache_keys(tmp_path):
     from latticememory.proof_pack import _InMemoryRedis
 

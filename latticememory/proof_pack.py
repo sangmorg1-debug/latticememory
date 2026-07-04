@@ -522,9 +522,14 @@ def run_proxy_pq_redis_flywheel_proof_pack(
     redis_url: str | None = None,
     redis_namespace: str = "proof-pack",
     include_competitor_baselines: bool = True,
+    progress_path: str | Path | None = None,
 ) -> dict[str, Any]:
     artifact_dir = Path(output_dir)
     artifact_dir.mkdir(parents=True, exist_ok=True)
+    progress_file = Path(progress_path) if progress_path is not None else None
+    if progress_file is not None:
+        progress_file.parent.mkdir(parents=True, exist_ok=True)
+        progress_file.write_text("", encoding="utf-8")
 
     if dataset_path is None:
         dataset = build_support_dataset(
@@ -539,15 +544,32 @@ def run_proxy_pq_redis_flywheel_proof_pack(
         dataset_source = str(dataset_path)
     _write_dataset_artifacts(artifact_dir, dataset)
 
-    runs = [
-        run_exact_string_baseline(dataset),
-        _run_dense_cosine_baseline(dataset),
-        _run_proxy_pq_baseline(dataset, artifact_dir, run_id="lattice_pq_local", use_redis=False),
-        _run_validated_pq_baseline(dataset, artifact_dir, run_id="lattice_pq_validated_cosine"),
-        _run_proxy_pq_baseline(dataset, artifact_dir, run_id="lattice_pq_redis", use_redis=True),
-    ]
+    runs: list[dict[str, Any]] = []
+
+    def record(row: dict[str, Any]) -> dict[str, Any]:
+        runs.append(row)
+        if progress_file is not None:
+            progress_row = {
+                "run_id": row.get("run_id"),
+                "status": row.get("status"),
+                "elapsed_s": row.get("elapsed_s", 0.0),
+                "hit_rate": row.get("hit_rate", 0.0),
+                "upstream_call_rate": row.get("upstream_call_rate", 0.0),
+                "false_positive_rate": row.get("false_positive_rate", 0.0),
+                "adversarial_false_positive_rate": row.get("adversarial_false_positive_rate", 0.0),
+                "redis_memory_mb": row.get("redis_memory_mb", 0.0),
+            }
+            with progress_file.open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(progress_row, sort_keys=True) + "\n")
+        return row
+
+    record(run_exact_string_baseline(dataset))
+    record(_run_dense_cosine_baseline(dataset))
+    record(_run_proxy_pq_baseline(dataset, artifact_dir, run_id="lattice_pq_local", use_redis=False))
+    record(_run_validated_pq_baseline(dataset, artifact_dir, run_id="lattice_pq_validated_cosine"))
+    record(_run_proxy_pq_baseline(dataset, artifact_dir, run_id="lattice_pq_redis", use_redis=True))
     if redis_url:
-        runs.append(
+        record(
             _run_proxy_pq_baseline(
                 dataset,
                 artifact_dir,
@@ -557,7 +579,7 @@ def run_proxy_pq_redis_flywheel_proof_pack(
                 redis_namespace=redis_namespace,
             )
         )
-        runs.append(
+        record(
             _run_validated_pq_baseline(
                 dataset,
                 artifact_dir,
@@ -568,7 +590,8 @@ def run_proxy_pq_redis_flywheel_proof_pack(
             )
         )
     if include_competitor_baselines:
-        runs.extend(_competitor_baseline_rows(dataset, redis_url=redis_url))
+        for row in _competitor_baseline_rows(dataset, redis_url=redis_url):
+            record(row)
 
     summary = {
         "artifact_dir": str(artifact_dir),
