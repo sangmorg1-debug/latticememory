@@ -528,6 +528,14 @@ def cmd_serve(args: argparse.Namespace) -> int:
         os.environ["LATTICE_HAMMING_COSINE_GATE"] = "true"
     if getattr(args, "hamming_cosine_threshold", None) is not None:
         os.environ["LATTICE_HAMMING_COSINE_THRESHOLD"] = str(args.hamming_cosine_threshold)
+    if getattr(args, "cache_cosine_gate", False):
+        os.environ["LATTICE_CACHE_COSINE_GATE"] = "true"
+    if getattr(args, "cache_cosine_threshold", None) is not None:
+        os.environ["LATTICE_CACHE_COSINE_THRESHOLD"] = str(args.cache_cosine_threshold)
+    if getattr(args, "redis_url", None):
+        os.environ["LATTICE_REDIS_URL"] = args.redis_url
+    if getattr(args, "redis_namespace", None):
+        os.environ["LATTICE_REDIS_NAMESPACE"] = args.redis_namespace
     if args.warm_path:
         os.environ["LATTICE_WARM_PATH"] = args.warm_path
     if args.admin_key:
@@ -1050,6 +1058,10 @@ def main() -> int:
     p_srv.add_argument("--hamming-rerank-retry-delay", type=float, default=None, help="Seconds to wait before each --hamming-rerank-retries attempt; default 0.25 if unset.")
     p_srv.add_argument("--hamming-cosine-gate", action="store_true", help="Raw-embedding cosine gate on hamming_nn candidates before serving (off by default)")
     p_srv.add_argument("--hamming-cosine-threshold", type=float, default=None, help="Cosine threshold for --hamming-cosine-gate; calibrate from paraphrase/near-miss pairs before deployment")
+    p_srv.add_argument("--cache-cosine-gate", action="store_true", help="Raw-embedding cosine gate on every cache hit before serving; rejects unsafe compressed-key hits")
+    p_srv.add_argument("--cache-cosine-threshold", type=float, default=None, help="Cosine threshold for --cache-cosine-gate; default 0.999")
+    p_srv.add_argument("--redis-url", default=None, help="Redis URL for shared cache storage, e.g. redis://localhost:6382/0")
+    p_srv.add_argument("--redis-namespace", default=None, help="Redis key namespace for shared cache entries")
     p_srv.add_argument("--warm-path",    default=None,    help="CSV/JSON/JSONL file to pre-warm cache at startup")
     p_srv.add_argument("--admin-key",    default=None,    help="Secret key required for /v1/cache mutations")
     p_srv.add_argument("--host",         default="0.0.0.0")

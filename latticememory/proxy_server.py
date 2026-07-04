@@ -26,10 +26,14 @@ hamming_rerank_retries = int(os.getenv("LATTICE_HAMMING_RERANK_RETRIES", "1"))
 hamming_rerank_retry_delay = float(os.getenv("LATTICE_HAMMING_RERANK_RETRY_DELAY", "0.25"))
 hamming_cosine_gate = os.getenv("LATTICE_HAMMING_COSINE_GATE", "false").lower() == "true"
 hamming_cosine_threshold = float(os.getenv("LATTICE_HAMMING_COSINE_THRESHOLD", "0.9"))
+cache_cosine_gate = os.getenv("LATTICE_CACHE_COSINE_GATE", "false").lower() == "true"
+cache_cosine_threshold = float(os.getenv("LATTICE_CACHE_COSINE_THRESHOLD", "0.999"))
 miss_log_path = os.getenv("LATTICE_MISS_LOG_PATH", None)
 warm_path     = os.getenv("LATTICE_WARM_PATH", None)
 admin_key     = os.getenv("LATTICE_ADMIN_KEY", None)
 reviewer_key  = os.getenv("LATTICE_REVIEWER_KEY", None)
+redis_url     = os.getenv("LATTICE_REDIS_URL", None)
+redis_namespace = os.getenv("LATTICE_REDIS_NAMESPACE", "lattice")
 
 import warnings
 
@@ -64,10 +68,14 @@ proxy = LatticeLLMProxy(
     hamming_rerank_retry_delay=hamming_rerank_retry_delay,
     hamming_cosine_gate=hamming_cosine_gate,
     hamming_cosine_threshold=hamming_cosine_threshold,
+    cache_cosine_gate=cache_cosine_gate,
+    cache_cosine_threshold=cache_cosine_threshold,
     miss_log_path=miss_log_path,
     warm_path=warm_path,
     admin_key=admin_key,
     reviewer_key=reviewer_key,
+    redis_url=redis_url,
+    redis_namespace=redis_namespace,
 )
 
 # Create FastAPI app

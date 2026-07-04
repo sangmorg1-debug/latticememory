@@ -97,6 +97,10 @@ class LatticeLLMProxy:
         # without an LLM round trip and fails closed on any encoder error.
         hamming_cosine_gate: bool = False,
         hamming_cosine_threshold: float = 0.9,
+        # General cache-hit validation gate. Unlike hamming_cosine_gate, this
+        # applies to every cache hit path, including compressed-key exact hits.
+        cache_cosine_gate: bool = False,
+        cache_cosine_threshold: float = 0.999,
         calibration_data_path: str | None = None,
         fp_budget: float = 0.0,
         require_calibration: bool = False,
@@ -113,6 +117,10 @@ class LatticeLLMProxy:
         reviewer_key: str | None = None,
         # Warm-start: load entries from a CSV/JSON/JSONL file at startup
         warm_path: str | None = None,
+        # Redis cache storage
+        redis_url: str | None = None,
+        redis_namespace: str = "lattice",
+        redis_ttl: int | None = None,
     ):
         self.upstream_url = upstream_url
         self.upstream_api_key = upstream_api_key
@@ -124,6 +132,12 @@ class LatticeLLMProxy:
         self.hamming_rerank_retry_delay = max(0.0, float(hamming_rerank_retry_delay))
         self.hamming_cosine_gate = hamming_cosine_gate
         self.hamming_cosine_threshold = float(hamming_cosine_threshold)
+        self.cache_cosine_gate = cache_cosine_gate
+        self.cache_cosine_threshold = float(cache_cosine_threshold)
+        self.redis_url = redis_url
+        self.redis_namespace = redis_namespace
+        self.redis_ttl = redis_ttl
+        self.redis_store = None
         self.cost_per_1k_input_tokens_usd = float(cost_per_1k_input_tokens_usd)
         self.batch_size = int(batch_size)
         
@@ -192,6 +206,15 @@ class LatticeLLMProxy:
                 hamming_router=hamming_router,
                 hamming_threshold=hamming_threshold,
                 hamming_router_mode=self.hamming_router_mode,
+            )
+
+        if redis_url:
+            from latticememory.redis_store import patch_cache_with_redis
+            self.redis_store = patch_cache_with_redis(
+                self.cache,
+                redis_url=redis_url,
+                namespace=redis_namespace,
+                ttl=redis_ttl,
             )
 
         # Calibration state telemetry
@@ -483,12 +506,29 @@ class LatticeLLMProxy:
             rerank_rejected = False
             cosine_gate_rejected = False
             hamming_cosine_score: float | None = None
+            cache_cosine_gate_rejected = False
+            cache_cosine_score: float | None = None
             if cached.hit and cached.retrieval_path == "hamming_nn" and proxy.hamming_cosine_gate:
                 confirmed, hamming_cosine_score = proxy._cosine_gate_confirms_match(
                     prompt, cached.source_prompt or ""
                 )
                 if not confirmed:
                     cosine_gate_rejected = True
+                    cached = dataclasses.replace(
+                        cached,
+                        hit=False,
+                        shadow_hit=True,
+                        shadow_cache_id=cached.cache_id,
+                        shadow_hamming_distance=cached.hamming_distance,
+                        shadow_source_prompt=cached.source_prompt,
+                        shadow_value=cached.value,
+                    )
+            if cached.hit and proxy.cache_cosine_gate:
+                confirmed, cache_cosine_score = proxy._cache_cosine_gate_confirms_match(
+                    prompt, cached.source_prompt or ""
+                )
+                if not confirmed:
+                    cache_cosine_gate_rejected = True
                     cached = dataclasses.replace(
                         cached,
                         hit=False,
@@ -536,6 +576,8 @@ class LatticeLLMProxy:
                     }
                     if hamming_cosine_score is not None:
                         headers["X-Lattice-Hamming-Cosine"] = f"{hamming_cosine_score:.6f}"
+                    if cache_cosine_score is not None:
+                        headers["X-Lattice-Cache-Cosine"] = f"{cache_cosine_score:.6f}"
                     return _StreamingResponse(
                         proxy._cached_body_as_sse(cached.value, prompt),
                         media_type="text/event-stream",
@@ -667,6 +709,8 @@ class LatticeLLMProxy:
                 }
                 if hamming_cosine_score is not None:
                     headers["X-Lattice-Hamming-Cosine"] = f"{hamming_cosine_score:.6f}"
+                if cache_cosine_score is not None:
+                    headers["X-Lattice-Cache-Cosine"] = f"{cache_cosine_score:.6f}"
                 return JSONResponse(content=cached.value, headers=headers)
 
             # Absolute Cache Miss or Shadow Hit
@@ -674,7 +718,9 @@ class LatticeLLMProxy:
                 # Log the shadow hit event in the audit trail but do not serve it
                 proxy._log_audit_event(
                     event_type=(
-                        "COSINE_GATE_REJECTED"
+                        "CACHE_COSINE_GATE_REJECTED"
+                        if cache_cosine_gate_rejected
+                        else "COSINE_GATE_REJECTED"
                         if cosine_gate_rejected
                         else "RERANK_REJECTED" if rerank_rejected else "SHADOW_HIT"
                     ),
@@ -686,6 +732,8 @@ class LatticeLLMProxy:
                         "threshold": proxy.cache._hamming_threshold,
                         "hamming_cosine": hamming_cosine_score,
                         "hamming_cosine_threshold": proxy.hamming_cosine_threshold,
+                        "cache_cosine": cache_cosine_score,
+                        "cache_cosine_threshold": proxy.cache_cosine_threshold,
                     }
                 )
 
@@ -718,7 +766,9 @@ class LatticeLLMProxy:
                     nearest_cache_distance=cached.shadow_hamming_distance if cached.shadow_hit else -1,
                 )
 
-            if cosine_gate_rejected:
+            if cache_cosine_gate_rejected:
+                retrieval_path = "cache_cosine_rejected_miss"
+            elif cosine_gate_rejected:
                 retrieval_path = "hamming_cosine_rejected_miss"
             elif rerank_rejected:
                 retrieval_path = "hamming_rerank_rejected_miss"
@@ -743,6 +793,10 @@ class LatticeLLMProxy:
                 headers["X-Lattice-Cosine-Gate-Rejected"] = "true"
             if hamming_cosine_score is not None:
                 headers["X-Lattice-Hamming-Cosine"] = f"{hamming_cosine_score:.6f}"
+            if cache_cosine_gate_rejected:
+                headers["X-Lattice-Cache-Cosine-Gate-Rejected"] = "true"
+            if cache_cosine_score is not None:
+                headers["X-Lattice-Cache-Cosine"] = f"{cache_cosine_score:.6f}"
             return JSONResponse(content=upstream_body, headers=headers)
 
         @app.post("/v1/compliance/validate")
@@ -1276,6 +1330,12 @@ class LatticeLLMProxy:
         except Exception:
             return False, None
         return score >= self.hamming_cosine_threshold, score
+
+    def _cache_cosine_gate_confirms_match(self, new_prompt: str, cached_prompt: str) -> tuple[bool, float | None]:
+        confirmed, score = self._cosine_gate_confirms_match(new_prompt, cached_prompt)
+        if score is None:
+            return False, None
+        return score >= self.cache_cosine_threshold, score
 
     def _estimate_savings(self, cached_value: Any, prompt: str) -> float:
         prompt_tokens = 0

@@ -617,6 +617,30 @@ def test_hamming_cosine_gate_confirms_matching_candidate():
     assert upstream.calls == 1
 
 
+def test_cache_cosine_gate_rejects_exact_cache_hit_before_serving():
+    upstream = FakeUpstream()
+    proxy = LatticeLLMProxy(
+        upstream_url="https://example.test/v1/chat/completions",
+        encoder=CanonicalPromptEncoder(384),
+        d_model=384,
+        upstream_client=upstream,
+        cache_cosine_gate=True,
+        cache_cosine_threshold=0.99,
+    )
+    proxy._cosine_gate_confirms_match = lambda new_prompt, cached_prompt: (False, 0.12)
+    client = TestClient(proxy.create_app())
+
+    first = client.post("/v1/chat/completions", json=_request("What is the capital of France?"))
+    second = client.post("/v1/chat/completions", json=_request("Which city is France's capital?"))
+
+    assert first.headers["X-Lattice-Cache"] == "MISS"
+    assert second.headers["X-Lattice-Cache"] == "MISS"
+    assert second.headers["X-Lattice-Retrieval-Path"] == "cache_cosine_rejected_miss"
+    assert second.headers["X-Lattice-Cache-Cosine-Gate-Rejected"] == "true"
+    assert float(second.headers["X-Lattice-Cache-Cosine"]) < 0.99
+    assert upstream.calls == 2
+
+
 def test_hamming_cosine_gate_fails_closed_when_encoder_errors():
     upstream = FakeUpstream()
     proxy = LatticeLLMProxy(
@@ -1296,6 +1320,28 @@ def test_proxy_server_reads_hamming_cosine_gate_env(monkeypatch):
     assert ps.proxy.hamming_cosine_threshold == 0.83
 
 
+def test_proxy_server_reads_redis_and_cache_cosine_gate_env(monkeypatch):
+    import importlib
+    import sys
+
+    for mod_name in list(sys.modules):
+        if "latticememory.proxy_server" in mod_name:
+            del sys.modules[mod_name]
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setenv("LATTICE_HAMMING_MODE", "off")
+    monkeypatch.setenv("LATTICE_REDIS_URL", "redis://localhost:6382/0")
+    monkeypatch.setenv("LATTICE_REDIS_NAMESPACE", "proof-demo")
+    monkeypatch.setenv("LATTICE_CACHE_COSINE_GATE", "true")
+    monkeypatch.setenv("LATTICE_CACHE_COSINE_THRESHOLD", "0.997")
+
+    ps = importlib.import_module("latticememory.proxy_server")
+
+    assert ps.proxy.redis_url == "redis://localhost:6382/0"
+    assert ps.proxy.redis_namespace == "proof-demo"
+    assert ps.proxy.cache_cosine_gate is True
+    assert ps.proxy.cache_cosine_threshold == 0.997
+
+
 def test_cmd_serve_sets_hamming_cosine_gate_env(monkeypatch):
     import argparse
     import os
@@ -1330,6 +1376,51 @@ def test_cmd_serve_sets_hamming_cosine_gate_env(monkeypatch):
     assert cmd_serve(args) == 0
     assert os.environ["LATTICE_HAMMING_COSINE_GATE"] == "true"
     assert os.environ["LATTICE_HAMMING_COSINE_THRESHOLD"] == "0.83"
+    assert run_calls
+
+
+def test_cmd_serve_sets_redis_and_cache_cosine_gate_env(monkeypatch):
+    import argparse
+    import os
+    import sys
+    import types
+
+    from latticememory.cli import cmd_serve
+
+    run_calls = []
+    monkeypatch.setitem(
+        sys.modules,
+        "uvicorn",
+        types.SimpleNamespace(run=lambda *a, **k: run_calls.append((a, k))),
+    )
+    args = argparse.Namespace(
+        key=None,
+        upstream=None,
+        cache=None,
+        miss_log=None,
+        hamming_mode=None,
+        hamming_rerank=False,
+        hamming_rerank_model=None,
+        hamming_rerank_retries=None,
+        hamming_rerank_retry_delay=None,
+        hamming_cosine_gate=False,
+        hamming_cosine_threshold=None,
+        cache_cosine_gate=True,
+        cache_cosine_threshold=0.997,
+        redis_url="redis://localhost:6382/0",
+        redis_namespace="proof-demo",
+        warm_path=None,
+        admin_key=None,
+        host="127.0.0.1",
+        port=8024,
+        workers=1,
+    )
+
+    assert cmd_serve(args) == 0
+    assert os.environ["LATTICE_REDIS_URL"] == "redis://localhost:6382/0"
+    assert os.environ["LATTICE_REDIS_NAMESPACE"] == "proof-demo"
+    assert os.environ["LATTICE_CACHE_COSINE_GATE"] == "true"
+    assert os.environ["LATTICE_CACHE_COSINE_THRESHOLD"] == "0.997"
     assert run_calls
 
 
