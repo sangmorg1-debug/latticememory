@@ -1342,6 +1342,41 @@ def test_proxy_server_reads_redis_and_cache_cosine_gate_env(monkeypatch):
     assert ps.proxy.cache_cosine_threshold == 0.997
 
 
+def test_proxy_server_builds_pq_cache_from_proof_dataset_env(monkeypatch, tmp_path):
+    import importlib
+    import json
+    import sys
+
+    from latticememory.proof_pack import build_support_dataset
+    from latticememory.rag.pq_retriever import PQLatticeDB
+
+    dataset = build_support_dataset(
+        seed_count=8,
+        calibration_count=8,
+        evaluation_count=8,
+        adversarial_count=4,
+    )
+    dataset_path = tmp_path / "support.jsonl"
+    with dataset_path.open("w", encoding="utf-8") as fh:
+        for rows in dataset.values():
+            for row in rows:
+                fh.write(json.dumps(row, sort_keys=True) + "\n")
+
+    for mod_name in list(sys.modules):
+        if "latticememory.proxy_server" in mod_name:
+            del sys.modules[mod_name]
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setenv("LATTICE_HAMMING_MODE", "off")
+    monkeypatch.setenv("LATTICE_PQ_PROOF_DATASET", str(dataset_path))
+    monkeypatch.setenv("LATTICE_PQ_NUM_BLOCKS", "4")
+    monkeypatch.setenv("LATTICE_PQ_CODEBOOK_SIZE", "4")
+
+    ps = importlib.import_module("latticememory.proxy_server")
+
+    assert isinstance(ps.proxy.cache.runtime.memory.lattice, PQLatticeDB)
+    assert ps.proxy.cache.get(dataset["cache_seed"][0]["prompt"]).hit is True
+
+
 def test_cmd_serve_sets_hamming_cosine_gate_env(monkeypatch):
     import argparse
     import os
@@ -1409,6 +1444,9 @@ def test_cmd_serve_sets_redis_and_cache_cosine_gate_env(monkeypatch):
         cache_cosine_threshold=0.997,
         redis_url="redis://localhost:6382/0",
         redis_namespace="proof-demo",
+        pq_proof_dataset=None,
+        pq_num_blocks=None,
+        pq_codebook_size=None,
         warm_path=None,
         admin_key=None,
         host="127.0.0.1",
@@ -1421,6 +1459,56 @@ def test_cmd_serve_sets_redis_and_cache_cosine_gate_env(monkeypatch):
     assert os.environ["LATTICE_REDIS_NAMESPACE"] == "proof-demo"
     assert os.environ["LATTICE_CACHE_COSINE_GATE"] == "true"
     assert os.environ["LATTICE_CACHE_COSINE_THRESHOLD"] == "0.997"
+    assert run_calls
+
+
+def test_cmd_serve_sets_pq_proof_dataset_env(monkeypatch):
+    import argparse
+    import os
+    import sys
+    import types
+
+    from latticememory.cli import cmd_serve
+
+    run_calls = []
+    monkeypatch.setenv("LATTICE_PQ_PROOF_DATASET", "")
+    monkeypatch.setenv("LATTICE_PQ_NUM_BLOCKS", "")
+    monkeypatch.setenv("LATTICE_PQ_CODEBOOK_SIZE", "")
+    monkeypatch.setitem(
+        sys.modules,
+        "uvicorn",
+        types.SimpleNamespace(run=lambda *a, **k: run_calls.append((a, k))),
+    )
+    args = argparse.Namespace(
+        key=None,
+        upstream=None,
+        cache=None,
+        miss_log=None,
+        hamming_mode=None,
+        hamming_rerank=False,
+        hamming_rerank_model=None,
+        hamming_rerank_retries=None,
+        hamming_rerank_retry_delay=None,
+        hamming_cosine_gate=False,
+        hamming_cosine_threshold=None,
+        cache_cosine_gate=True,
+        cache_cosine_threshold=0.999,
+        redis_url="redis://localhost:6382/0",
+        redis_namespace="proof-demo",
+        pq_proof_dataset="artifact.jsonl",
+        pq_num_blocks=4,
+        pq_codebook_size=4,
+        warm_path=None,
+        admin_key=None,
+        host="127.0.0.1",
+        port=8024,
+        workers=1,
+    )
+
+    assert cmd_serve(args) == 0
+    assert os.environ["LATTICE_PQ_PROOF_DATASET"] == "artifact.jsonl"
+    assert os.environ["LATTICE_PQ_NUM_BLOCKS"] == "4"
+    assert os.environ["LATTICE_PQ_CODEBOOK_SIZE"] == "4"
     assert run_calls
 
 

@@ -536,6 +536,12 @@ def cmd_serve(args: argparse.Namespace) -> int:
         os.environ["LATTICE_REDIS_URL"] = args.redis_url
     if getattr(args, "redis_namespace", None):
         os.environ["LATTICE_REDIS_NAMESPACE"] = args.redis_namespace
+    if getattr(args, "pq_proof_dataset", None):
+        os.environ["LATTICE_PQ_PROOF_DATASET"] = args.pq_proof_dataset
+    if getattr(args, "pq_num_blocks", None) is not None:
+        os.environ["LATTICE_PQ_NUM_BLOCKS"] = str(args.pq_num_blocks)
+    if getattr(args, "pq_codebook_size", None) is not None:
+        os.environ["LATTICE_PQ_CODEBOOK_SIZE"] = str(args.pq_codebook_size)
     if args.warm_path:
         os.environ["LATTICE_WARM_PATH"] = args.warm_path
     if args.admin_key:
@@ -1062,6 +1068,9 @@ def main() -> int:
     p_srv.add_argument("--cache-cosine-threshold", type=float, default=None, help="Cosine threshold for --cache-cosine-gate; default 0.999")
     p_srv.add_argument("--redis-url", default=None, help="Redis URL for shared cache storage, e.g. redis://localhost:6382/0")
     p_srv.add_argument("--redis-namespace", default=None, help="Redis key namespace for shared cache entries")
+    p_srv.add_argument("--pq-proof-dataset", default=None, help="Support proof-pack JSONL to fit and seed a PQ-backed cache before serving")
+    p_srv.add_argument("--pq-num-blocks", type=int, default=None, help="PQ num_blocks for --pq-proof-dataset; default 4")
+    p_srv.add_argument("--pq-codebook-size", type=int, default=None, help="PQ codebook_size for --pq-proof-dataset; default 4")
     p_srv.add_argument("--warm-path",    default=None,    help="CSV/JSON/JSONL file to pre-warm cache at startup")
     p_srv.add_argument("--admin-key",    default=None,    help="Secret key required for /v1/cache mutations")
     p_srv.add_argument("--host",         default="0.0.0.0")

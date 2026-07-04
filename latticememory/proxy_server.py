@@ -34,6 +34,9 @@ admin_key     = os.getenv("LATTICE_ADMIN_KEY", None)
 reviewer_key  = os.getenv("LATTICE_REVIEWER_KEY", None)
 redis_url     = os.getenv("LATTICE_REDIS_URL", None)
 redis_namespace = os.getenv("LATTICE_REDIS_NAMESPACE", "lattice")
+pq_proof_dataset = os.getenv("LATTICE_PQ_PROOF_DATASET", None)
+pq_num_blocks = int(os.getenv("LATTICE_PQ_NUM_BLOCKS", "4"))
+pq_codebook_size = int(os.getenv("LATTICE_PQ_CODEBOOK_SIZE", "4"))
 
 import warnings
 
@@ -47,6 +50,20 @@ if not upstream_api_key:
     )
     upstream_api_key = ""  # proxy handles missing key gracefully per-request
 
+semantic_cache = None
+if pq_proof_dataset:
+    from latticememory.proof_pack import build_seeded_pq_cache_from_support_jsonl
+
+    semantic_cache = build_seeded_pq_cache_from_support_jsonl(
+        pq_proof_dataset,
+        redis_url=redis_url,
+        redis_namespace=redis_namespace,
+        pq_num_blocks=pq_num_blocks,
+        pq_codebook_size=pq_codebook_size,
+        flush_redis=True,
+    )
+
+
 # Instantiate proxy
 proxy = LatticeLLMProxy(
     upstream_url=upstream_url,
@@ -54,6 +71,7 @@ proxy = LatticeLLMProxy(
     encoder_model=encoder_model,
     d_model=None,  # Auto-detect
     sqlite_path=sqlite_path,
+    semantic_cache=semantic_cache,
     hamming_router_mode=hamming_mode,
     hamming_threshold=hamming_threshold,
     compliance_mode=compliance_mode,

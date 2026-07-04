@@ -95,6 +95,9 @@ For a real upstream-backed proxy:
 lattice serve `
   --redis-url redis://localhost:6382/0 `
   --redis-namespace public-demo-live `
+  --pq-proof-dataset artifacts\proxy_pq_redis_flywheel_bitext_large_2026-07-04\bitext_support_dataset_large.jsonl `
+  --pq-num-blocks 4 `
+  --pq-codebook-size 4 `
   --cache-cosine-gate `
   --cache-cosine-threshold 0.999 `
   --key $env:OPENAI_API_KEY `
@@ -104,10 +107,11 @@ lattice serve `
 This validates the production HTTP path, Redis-backed cache storage, cache
 cosine validation, and `/v1/analytics`.
 
-Important distinction: `lattice serve` uses the standard proxy cache runtime. The
-PQ proof pack uses a PQ-fitted cache constructed by the proof harness. Do not
-claim the live `lattice serve` command alone reproduces the PQ row unless the
-server is explicitly wired to a PQ-fitted `semantic_cache`.
+Important distinction: `--pq-proof-dataset` is a proof/demo mode. It fits PQ
+codebooks from the support proof JSONL, seeds the cache_seed rows, and passes
+that PQ-backed semantic cache into the live proxy before serving. Plain
+`lattice serve` without `--pq-proof-dataset` still uses the standard proxy cache
+runtime and should not be described as reproducing the PQ proof row.
 
 ## 4. Replay Through The Live Proxy
 

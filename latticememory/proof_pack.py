@@ -647,6 +647,41 @@ def run_proxy_pq_redis_flywheel_proof_pack(
     return summary
 
 
+def build_seeded_pq_cache_from_support_jsonl(
+    dataset_path: str | Path,
+    *,
+    redis_url: str | None = None,
+    redis_namespace: str = "proof-pack",
+    pq_num_blocks: int = 4,
+    pq_codebook_size: int = 4,
+    flush_redis: bool = False,
+) -> RFSnapSemanticCache:
+    """Build the PQ-backed semantic cache used by the proof-pack serving demo.
+
+    This is intentionally a proof/demo helper, not a general-purpose PQ proxy
+    configuration API. It fits PQ codebooks from cache_seed + calibration rows
+    and seeds the cache_seed rows so ``lattice serve --pq-proof-dataset`` can
+    reproduce the same cache shape as the proof harness.
+    """
+    dataset = load_support_dataset_jsonl(dataset_path)
+    cache, _ = _build_pq_cache(
+        dataset,
+        use_redis=bool(redis_url),
+        redis_url=redis_url,
+        redis_namespace=redis_namespace,
+        flush_redis=flush_redis,
+        pq_num_blocks=pq_num_blocks,
+        pq_codebook_size=pq_codebook_size,
+    )
+    for row in dataset["cache_seed"]:
+        cache.put(
+            row["prompt"],
+            value=_response_body(row["canonical_answer"], model="demo-seed"),
+            metadata={"intent_id": row["intent_id"], "seed_id": row["id"]},
+        )
+    return cache
+
+
 def _run_dict_baseline(
     run_id: str,
     dataset: dict[str, list[dict[str, Any]]],
@@ -967,11 +1002,13 @@ def _build_pq_cache(
     redis_namespace: str = "proof-pack",
     flush_redis: bool = False,
     existing_redis_backend: Any | None = None,
+    pq_num_blocks: int = 4,
+    pq_codebook_size: int = 4,
 ):
     prompt_to_token = _prompt_to_token(dataset)
     encoder = _ProofPackEncoder(prompt_to_token)
     d_model = encoder.d_model
-    pq = PQLatticeDB(d_model=d_model, num_blocks=4, codebook_size=4)
+    pq = PQLatticeDB(d_model=d_model, num_blocks=pq_num_blocks, codebook_size=pq_codebook_size)
     fit_prompts = [row["prompt"] for row in dataset["cache_seed"] + dataset["calibration"]]
     pq.fit(encoder.encode(fit_prompts))
     memory = RFSnapLatticeMemory(d_model=d_model, lattice=pq, beam_radius=1)
