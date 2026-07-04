@@ -81,6 +81,11 @@ misses, so it validates proxy wiring, Redis-backed cache storage, PQ proof-mode
 startup, validation-gated serving, and `/v1/analytics` without spending API
 tokens.
 
+`--pq-proof-dataset` is a reproducible demo/proof mode. It seeds a PQ-backed
+cache from the labeled support-workload dataset so the live HTTP path can be
+tested against the same artifact family as the proof harness. It is not a
+generic "turn on PQ for any workload" autoserving mode.
+
 The live replay is stateful: rejected candidates fall through to upstream and
 can then become cache entries for later exact requests. That is why its upstream
 rate is lower than the static proof-harness policy row.
