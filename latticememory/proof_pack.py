@@ -557,6 +557,16 @@ def run_proxy_pq_redis_flywheel_proof_pack(
                 redis_namespace=redis_namespace,
             )
         )
+        runs.append(
+            _run_validated_pq_baseline(
+                dataset,
+                artifact_dir,
+                run_id="lattice_pq_redis_validated_cosine",
+                use_redis=True,
+                redis_url=redis_url,
+                redis_namespace=redis_namespace,
+            )
+        )
     if include_competitor_baselines:
         runs.extend(_competitor_baseline_rows(dataset, redis_url=redis_url))
 
@@ -799,13 +809,38 @@ def _run_validated_pq_baseline(
     *,
     run_id: str,
     cosine_threshold: float = 0.999,
+    use_redis: bool = False,
+    redis_url: str | None = None,
+    redis_namespace: str = "proof-pack",
 ) -> dict[str, Any]:
-    cache, _ = _build_pq_cache(dataset, use_redis=False)
+    try:
+        cache, redis_backend = _build_pq_cache(
+            dataset,
+            use_redis=use_redis,
+            redis_url=redis_url,
+            redis_namespace=redis_namespace,
+            flush_redis=True,
+        )
+    except Exception as exc:
+        return _skipped_metrics(
+            run_id=run_id,
+            skip_reason=f"redis unavailable: {type(exc).__name__}: {exc}",
+            redis_backend="real" if redis_url else ("in_memory" if use_redis else "none"),
+        )
     for row in dataset["cache_seed"]:
         cache.put(
             row["prompt"],
             value=_response_body(row["canonical_answer"]),
             metadata={"intent_id": row["intent_id"], "seed_id": row["id"]},
+        )
+
+    shared_cache_verified = False
+    if use_redis:
+        shared_cache_verified = _verify_shared_cache(
+            dataset,
+            redis_url=redis_url,
+            redis_namespace=redis_namespace,
+            existing_redis_backend=redis_backend,
         )
 
     encoder = cache.runtime.encoder
@@ -847,16 +882,16 @@ def _run_validated_pq_baseline(
         latencies_ms=latencies,
         elapsed_s=elapsed,
         cache_entries=len(cache._entries),
-        redis_memory_mb=0.0,
+        redis_memory_mb=_redis_memory_mb(redis_backend, namespace=redis_namespace) if redis_backend is not None else 0.0,
         flywheel_miss_clusters=0,
         reviewed_answers_loaded=0,
     )
     metrics["validation_gate"] = "cosine"
     metrics["validation_threshold"] = cosine_threshold
     metrics["rejected_candidates"] = rejected_candidates
-    metrics["redis_backend"] = "none"
-    metrics["redis_persistence_verified"] = False
-    metrics["multi_proxy_shared_cache_verified"] = False
+    metrics["redis_backend"] = "real" if redis_url else ("in_memory" if use_redis else "none")
+    metrics["redis_persistence_verified"] = bool(use_redis and len(cache._entries) >= len(dataset["cache_seed"]))
+    metrics["multi_proxy_shared_cache_verified"] = shared_cache_verified
     (artifact_dir / f"{run_id}.json").write_text(
         json.dumps(metrics, indent=2, sort_keys=True),
         encoding="utf-8",

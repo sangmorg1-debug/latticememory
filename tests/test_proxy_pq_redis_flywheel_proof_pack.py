@@ -200,6 +200,35 @@ def test_proof_pack_reports_real_redis_shared_cache_when_reachable(tmp_path):
     assert redis_row["redis_memory_mb"] > 0.0
 
 
+def test_proof_pack_reports_validated_real_redis_pq_when_reachable(tmp_path):
+    from latticememory.proof_pack import _InMemoryRedis
+
+    redis_client = _InMemoryRedis()
+    with patch("redis.from_url", return_value=redis_client):
+        summary = run_proxy_pq_redis_flywheel_proof_pack(
+            tmp_path,
+            seed_count=8,
+            calibration_count=8,
+            evaluation_count=24,
+            adversarial_count=8,
+            redis_url="redis://localhost:6379/15",
+            redis_namespace="validated-proof",
+        )
+
+    raw_row = next(row for row in summary["runs"] if row["run_id"] == "lattice_pq_redis_real")
+    validated_row = next(
+        row for row in summary["runs"] if row["run_id"] == "lattice_pq_redis_validated_cosine"
+    )
+    assert validated_row["status"] == "ok"
+    assert validated_row["validation_gate"] == "cosine"
+    assert validated_row["redis_backend"] == "real"
+    assert validated_row["redis_persistence_verified"] is True
+    assert validated_row["multi_proxy_shared_cache_verified"] is True
+    assert validated_row["redis_memory_mb"] > 0.0
+    assert validated_row["adversarial_false_positive_rate"] <= raw_row["adversarial_false_positive_rate"]
+    assert (tmp_path / "lattice_pq_redis_validated_cosine.json").exists()
+
+
 def test_redis_memory_mb_counts_lattice_redis_store_client_namespace():
     from latticememory.proof_pack import _InMemoryRedis, _redis_memory_mb
     from latticememory.redis_store import LatticeRedisStore
