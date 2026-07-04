@@ -29,6 +29,8 @@ Requirements::
 from __future__ import annotations
 
 import json
+import hashlib
+import math
 import time
 from typing import Any, Iterator
 
@@ -44,13 +46,38 @@ class _RedisEntriesProxy:
     Entries are serialized as JSON. The `lattice_key` bytes field is hex-encoded.
     """
 
-    def __init__(self, redis_client: Any, namespace: str, ttl: int | None = None) -> None:
-        self._r = redis_client
+    def __init__(
+        self,
+        redis_client: Any | list[Any],
+        namespace: str,
+        ttl: int | None = None,
+        max_entries: int | None = None,
+    ) -> None:
+        self._clients = list(redis_client) if isinstance(redis_client, list) else [redis_client]
+        if not self._clients:
+            raise ValueError("redis_client must contain at least one client")
+        self._r = self._clients[0]
         self._ns = namespace
         self._ttl = ttl  # seconds; None = no expiry
+        self._max_entries = max_entries
+        self._max_entries_per_shard = (
+            max(1, math.ceil(max_entries / len(self._clients))) if max_entries else None
+        )
+
+    def _client_and_idx(self, cache_id: str) -> tuple[Any, int]:
+        digest = hashlib.md5(cache_id.encode("utf-8")).digest()
+        shard_idx = int.from_bytes(digest, byteorder="big") % len(self._clients)
+        return self._clients[shard_idx], shard_idx
 
     def _key(self, cache_id: str) -> str:
         return f"{self._ns}:{cache_id}"
+
+    def _lru_key(self, shard_idx: int) -> str:
+        return f"{self._ns}:shard:{shard_idx}:lru"
+
+    def _is_lru_key(self, key: bytes | str) -> bool:
+        key_str = key.decode() if isinstance(key, bytes) else key
+        return key_str.startswith(f"{self._ns}:shard:") and key_str.endswith(":lru")
 
     def _serialize(self, entry: SemanticCacheEntry) -> str:
         return json.dumps({
@@ -79,34 +106,65 @@ class _RedisEntriesProxy:
         )
 
     def __contains__(self, cache_id: object) -> bool:
-        return bool(self._r.exists(self._key(str(cache_id))))
+        client, _ = self._client_and_idx(str(cache_id))
+        return bool(client.exists(self._key(str(cache_id))))
 
     def __getitem__(self, cache_id: str) -> SemanticCacheEntry:
-        data = self._r.get(self._key(cache_id))
+        client, shard_idx = self._client_and_idx(cache_id)
+        data = client.get(self._key(cache_id))
         if data is None:
             raise KeyError(cache_id)
+        self._touch(client, shard_idx, cache_id)
         return self._deserialize(data)
 
     def __setitem__(self, cache_id: str, entry: SemanticCacheEntry) -> None:
+        client, shard_idx = self._client_and_idx(cache_id)
         serialized = self._serialize(entry)
         if self._ttl:
-            self._r.setex(self._key(cache_id), self._ttl, serialized)
+            client.setex(self._key(cache_id), self._ttl, serialized)
         else:
-            self._r.set(self._key(cache_id), serialized)
+            client.set(self._key(cache_id), serialized)
+        self._touch(client, shard_idx, cache_id)
+        self._evict_if_needed(client, shard_idx)
 
     def __delitem__(self, cache_id: str) -> None:
-        self._r.delete(self._key(cache_id))
+        client, shard_idx = self._client_and_idx(cache_id)
+        client.delete(self._key(cache_id))
+        if hasattr(client, "zrem"):
+            client.zrem(self._lru_key(shard_idx), cache_id)
+
+    def _touch(self, client: Any, shard_idx: int, cache_id: str) -> None:
+        if not hasattr(client, "zadd"):
+            return
+        client.zadd(self._lru_key(shard_idx), {cache_id: time.time()})
+
+    def _evict_if_needed(self, client: Any, shard_idx: int) -> None:
+        if self._max_entries_per_shard is None:
+            return
+        if not all(hasattr(client, attr) for attr in ("zcard", "zrange", "zrem")):
+            return
+        lru_key = self._lru_key(shard_idx)
+        count = int(client.zcard(lru_key))
+        overflow = count - self._max_entries_per_shard
+        if overflow <= 0:
+            return
+        oldest = client.zrange(lru_key, 0, overflow - 1)
+        for member in oldest:
+            cache_id = member.decode() if isinstance(member, bytes) else member
+            client.delete(self._key(cache_id))
+            client.zrem(lru_key, cache_id)
 
     def __len__(self) -> int:
         # SCAN is O(N) but avoids blocking KEYS command in production
-        cursor = 0
         count = 0
-        pattern = f"{self._ns}:*"
-        while True:
-            cursor, keys = self._r.scan(cursor, match=pattern, count=100)
-            count += len(keys)
-            if cursor == 0:
-                break
+        for client in self._clients:
+            cursor = 0
+            pattern = f"{self._ns}:*"
+            while True:
+                cursor, keys = client.scan(cursor, match=pattern, count=100)
+                count += sum(1 for key in keys if not self._is_lru_key(key))
+                if cursor == 0:
+                    break
         return count
 
     def get(self, cache_id: str, default: Any = None) -> SemanticCacheEntry | None:
@@ -116,16 +174,19 @@ class _RedisEntriesProxy:
             return default
 
     def values(self) -> Iterator[SemanticCacheEntry]:
-        pattern = f"{self._ns}:*"
-        cursor = 0
-        while True:
-            cursor, keys = self._r.scan(cursor, match=pattern, count=100)
-            for k in keys:
-                data = self._r.get(k)
-                if data:
-                    yield self._deserialize(data)
-            if cursor == 0:
-                break
+        for client in self._clients:
+            pattern = f"{self._ns}:*"
+            cursor = 0
+            while True:
+                cursor, keys = client.scan(cursor, match=pattern, count=100)
+                for key in keys:
+                    if self._is_lru_key(key):
+                        continue
+                    data = client.get(key)
+                    if data:
+                        yield self._deserialize(data)
+                if cursor == 0:
+                    break
 
     def items(self) -> Iterator[tuple[str, SemanticCacheEntry]]:
         for entry in self.values():
@@ -133,15 +194,18 @@ class _RedisEntriesProxy:
 
     def keys(self) -> Iterator[str]:
         pattern = f"{self._ns}:*"
-        cursor = 0
         prefix_len = len(self._ns) + 1
-        while True:
-            cursor, keys = self._r.scan(cursor, match=pattern, count=100)
-            for k in keys:
-                key_str = k.decode() if isinstance(k, bytes) else k
-                yield key_str[prefix_len:]  # strip namespace prefix
-            if cursor == 0:
-                break
+        for client in self._clients:
+            cursor = 0
+            while True:
+                cursor, keys = client.scan(cursor, match=pattern, count=100)
+                for key in keys:
+                    if self._is_lru_key(key):
+                        continue
+                    key_str = key.decode() if isinstance(key, bytes) else key
+                    yield key_str[prefix_len:]  # strip namespace prefix
+                if cursor == 0:
+                    break
 
 
 class LatticeRedisStore:
@@ -153,21 +217,27 @@ class LatticeRedisStore:
     Parameters
     ----------
     redis_url:
-        Redis connection URL. Default ``redis://localhost:6379``.
+        Redis connection URL, a comma-separated URL list, or a list of URLs.
+        Multiple URLs shard cache entries by cache id. Default
+        ``redis://localhost:6379``.
     namespace:
         Key prefix used to isolate this deployment's entries.
         Use different namespaces for different domains or environments.
     ttl:
         Optional TTL in seconds for each cache entry. Default None (no expiry).
+    max_entries:
+        Optional approximate maximum entries, distributed evenly across shards
+        with per-shard LRU eviction.
     db:
         Redis database index. Default 0.
     """
 
     def __init__(
         self,
-        redis_url: str = "redis://localhost:6379",
+        redis_url: str | list[str] = "redis://localhost:6379",
         namespace: str = "lattice",
         ttl: int | None = None,
+        max_entries: int | None = None,
         db: int = 0,
     ) -> None:
         try:
@@ -177,13 +247,29 @@ class LatticeRedisStore:
                 "Redis support requires: pip install 'lattice-memory-e8[redis]'"
             ) from exc
 
-        self._client = redis_lib.from_url(redis_url, db=db, decode_responses=False)
+        if isinstance(redis_url, str):
+            urls = [url.strip() for url in redis_url.split(",") if url.strip()]
+        else:
+            urls = list(redis_url)
+        if not urls:
+            raise ValueError("redis_url must contain at least one URL")
+
+        self._clients = [
+            redis_lib.from_url(url, db=db, decode_responses=False) for url in urls
+        ]
+        self._client = self._clients[0]
         self.namespace = namespace
         self.ttl = ttl
+        self.max_entries = max_entries
 
     def make_entries_proxy(self) -> _RedisEntriesProxy:
         """Return a proxy object that can replace RFSnapSemanticCache._entries."""
-        return _RedisEntriesProxy(self._client, self.namespace, self.ttl)
+        return _RedisEntriesProxy(
+            self._clients,
+            self.namespace,
+            self.ttl,
+            max_entries=self.max_entries,
+        )
 
     def patch_cache(self, cache: Any) -> None:
         """Swap the in-memory _entries dict in `cache` for Redis-backed storage.
@@ -203,20 +289,22 @@ class LatticeRedisStore:
     def flush(self) -> int:
         """Delete all entries in this namespace. Returns count deleted."""
         pattern = f"{self.namespace}:*"
-        cursor = 0
         deleted = 0
-        while True:
-            cursor, keys = self._client.scan(cursor, match=pattern, count=100)
-            if keys:
-                deleted += self._client.delete(*keys)
-            if cursor == 0:
-                break
+        for client in self._clients:
+            cursor = 0
+            while True:
+                cursor, keys = client.scan(cursor, match=pattern, count=100)
+                if keys:
+                    deleted += client.delete(*keys)
+                if cursor == 0:
+                    break
         return deleted
 
     def ping(self) -> bool:
         """Return True if Redis is reachable."""
         try:
-            self._client.ping()
+            for client in self._clients:
+                client.ping()
             return True
         except Exception:
             return False
@@ -224,11 +312,17 @@ class LatticeRedisStore:
 
 def patch_cache_with_redis(
     cache: Any,
-    redis_url: str = "redis://localhost:6379",
+    redis_url: str | list[str] = "redis://localhost:6379",
     namespace: str = "lattice",
     ttl: int | None = None,
+    max_entries: int | None = None,
 ) -> LatticeRedisStore:
     """Convenience function: patch a cache instance and return the store object."""
-    store = LatticeRedisStore(redis_url=redis_url, namespace=namespace, ttl=ttl)
+    store = LatticeRedisStore(
+        redis_url=redis_url,
+        namespace=namespace,
+        ttl=ttl,
+        max_entries=max_entries,
+    )
     store.patch_cache(cache)
     return store
