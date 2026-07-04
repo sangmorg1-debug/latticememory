@@ -200,6 +200,19 @@ def test_proof_pack_reports_real_redis_shared_cache_when_reachable(tmp_path):
     assert redis_row["redis_memory_mb"] > 0.0
 
 
+def test_redis_memory_mb_counts_lattice_redis_store_client_namespace():
+    from latticememory.proof_pack import _InMemoryRedis, _redis_memory_mb
+    from latticememory.redis_store import LatticeRedisStore
+
+    redis_client = _InMemoryRedis()
+    redis_client.set("proof-pack:item", "cached-value")
+    redis_client.set("other:item", "not-counted")
+    with patch("redis.from_url", return_value=redis_client):
+        store = LatticeRedisStore(redis_url="redis://localhost:6379/15", namespace="proof-pack")
+
+    assert _redis_memory_mb(store, namespace="proof-pack") > 0.0
+
+
 def test_proof_pack_writes_skipped_baselines_and_public_claim_card(tmp_path):
     summary = run_proxy_pq_redis_flywheel_proof_pack(
         tmp_path,

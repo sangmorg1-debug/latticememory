@@ -928,6 +928,8 @@ def _redis_memory_mb(redis_backend: Any, *, namespace: str) -> float:
     if hasattr(redis_backend, "memory_bytes"):
         return float(redis_backend.memory_bytes()) / (1024.0 * 1024.0)
     clients = getattr(redis_backend, "_clients", None)
+    if clients is None and hasattr(redis_backend, "_client"):
+        clients = [redis_backend._client]
     if not clients:
         return 0.0
     total = 0
