@@ -316,3 +316,4 @@ def test_proof_pack_writes_skipped_baselines_and_public_claim_card(tmp_path):
     assert "does not replace general-purpose vector databases" in text
     assert "Safest Zero-FP Measured Row" in text
     assert "Highest-Hit Measured Row" in text
+    assert "Target Product Policy Row" in text

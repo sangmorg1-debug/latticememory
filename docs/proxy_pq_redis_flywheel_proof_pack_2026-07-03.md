@@ -90,6 +90,35 @@ Operating policy from this artifact:
 | balanced_validated_pq | lattice_pq_validated_cosine | 0.9663 | 0.0000 | 0.0000 | target product path |
 | aggressive_raw_pq | lattice_pq_local | 1.0000 | 0.0338 | 0.1500 | research/high-risk only |
 
+Medium Redis Stack validated-PQ run:
+
+- Artifact directory: `artifacts/proxy_pq_redis_flywheel_bitext_medium_2026-07-04/`
+- Source dataset: `bitext/Bitext-customer-support-llm-chatbot-training-dataset`
+- Proof-pack split: 250 seed rows, 500 calibration rows, 2,000 evaluation rows, 500 adversarial rows
+- Redis runtime: `redis/redis-stack-server:latest` via Docker Engine inside WSL at `redis://localhost:6382/0`
+- Persistence/shared-cache check: `lattice_pq_redis_validated_cosine` reports `redis_persistence_verified=true` and `multi_proxy_shared_cache_verified=true`
+- Larger attempted split note: a 500/1000/5000/1000 run was interrupted after the local and in-memory Redis rows because the raw real-Redis proxy stage stopped making progress; it was not committed as a completed proof artifact.
+
+| Run | Hit rate | Upstream rate | FP rate | Adv FP rate | Avg ms | Redis MB |
+|---|---:|---:|---:|---:|---:|---:|
+| exact_string | 0.4152 | 0.5848 | 0.0000 | 0.0000 | 0.001 | 0.0000 |
+| dense_cosine | 1.0000 | 0.0000 | 0.0000 | 0.0000 | 0.074 | 0.0000 |
+| lattice_pq_local | 1.0000 | 0.0000 | 0.0316 | 0.1540 | 4.150 | 0.0000 |
+| lattice_pq_validated_cosine | 0.9600 | 0.0400 | 0.0000 | 0.0000 | 0.385 | 0.0000 |
+| lattice_pq_redis | 1.0000 | 0.0000 | 0.0316 | 0.1540 | 4.083 | 0.0500 |
+| lattice_pq_redis_real | 1.0000 | 0.0000 | 0.0316 | 0.1540 | 6.383 | 0.0511 |
+| lattice_pq_redis_validated_cosine | 0.9600 | 0.0400 | 0.0000 | 0.0000 | 1.336 | 0.0511 |
+| redisvl_direct | 1.0000 | 0.0000 | 0.0000 | 0.0000 | 1.140 | 0.0000 |
+| gptcache_direct | 0.4152 | 0.5848 | 0.0000 | 0.0000 | 0.003 | 0.0000 |
+
+This run validates the product-shaped serving policy: Redis-backed PQ can be
+used as a candidate generator when a cosine gate verifies the candidate before
+serving. It does not prove superiority over RedisVL; RedisVL direct remains a
+strong zero-FP baseline on this deterministic proof-pack encoder. The LatticeMemory
+claim is the auditable operating-policy matrix: raw PQ over-hits, validated PQ
+trades 4.0% upstream calls for zero measured false positives on this split, and
+all rows report latency, Redis memory, and false-positive rates together.
+
 ---
 
 ## Claim Boundary

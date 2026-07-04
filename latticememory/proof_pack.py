@@ -1386,8 +1386,11 @@ def _render_claim_card(summary: dict[str, Any]) -> str:
         and run.get("adversarial_false_positive_rate", 0.0) == 0.0
     ]
     safest = max(zero_fp_runs or ok_runs, key=lambda run: run.get("hit_rate", 0.0))
-    return "\n".join(
-        [
+    run_by_id = {run["run_id"]: run for run in ok_runs}
+    target_policy = run_by_id.get("lattice_pq_redis_validated_cosine") or run_by_id.get(
+        "lattice_pq_validated_cosine"
+    )
+    lines = [
             "# LatticeMemory Public Claim Card",
             "",
             "## Supported Claim",
@@ -1420,6 +1423,33 @@ def _render_claim_card(summary: dict[str, Any]) -> str:
             "",
             "Use the highest-hit row only with its measured false-positive rate attached.",
             "",
+    ]
+    if target_policy is not None:
+        lines.extend(
+            [
+                "## Target Product Policy Row",
+                "",
+                f"- Run: `{target_policy['run_id']}`",
+                f"- Hit rate: `{target_policy['hit_rate']:.4f}`",
+                f"- Upstream call rate: `{target_policy['upstream_call_rate']:.4f}`",
+                f"- False-positive rate: `{target_policy['false_positive_rate']:.4f}`",
+                (
+                    "- Adversarial false-positive rate: "
+                    f"`{target_policy['adversarial_false_positive_rate']:.4f}`"
+                ),
+                f"- Redis memory MB: `{target_policy['redis_memory_mb']:.4f}`",
+                f"- Flywheel miss clusters: `{target_policy['flywheel_miss_clusters']}`",
+                "",
+                (
+                    "This is the product-shaped row to harden: PQ generates candidates, "
+                    "a validation gate decides whether they are safe to serve, and misses "
+                    "fall back upstream."
+                ),
+                "",
+            ]
+        )
+    lines.extend(
+        [
             "## Unsupported Claims",
             "",
             "- LatticeMemory does not replace general-purpose vector databases.",
@@ -1428,6 +1458,7 @@ def _render_claim_card(summary: dict[str, Any]) -> str:
             "",
         ]
     )
+    return "\n".join(lines)
 
 
 def _write_dataset_artifacts(artifact_dir: Path, dataset: dict[str, list[dict[str, Any]]]) -> None:

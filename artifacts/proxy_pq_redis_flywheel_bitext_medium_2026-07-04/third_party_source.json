@@ -1,0 +1,20 @@
+{
+  "dataset": "bitext/Bitext-customer-support-llm-chatbot-training-dataset",
+  "fields": [
+    "flags",
+    "instruction",
+    "category",
+    "intent",
+    "response"
+  ],
+  "note": "Public third-party customer-service Q/A dataset converted through build_support_dataset_from_qa_records for the medium Redis Stack proof run.",
+  "proof_pack_jsonl": "artifacts\\proxy_pq_redis_flywheel_bitext_medium_2026-07-04\\bitext_support_dataset_medium.jsonl",
+  "rows_available": 26872,
+  "split_rows": {
+    "adversarial": 500,
+    "cache_seed": 250,
+    "calibration": 500,
+    "evaluation": 2000
+  },
+  "url": "https://huggingface.co/datasets/bitext/Bitext-customer-support-llm-chatbot-training-dataset"
+}
