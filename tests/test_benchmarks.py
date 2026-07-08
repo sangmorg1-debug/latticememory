@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 
 
-def test_compression_benchmark_reports_actual_and_theoretical_bytes(tmp_path):
+def test_compression_benchmark_reports_actual_and_hybrid_bytes(tmp_path):
     from benchmarks.benchmark_compression import run_benchmark
 
     result = run_benchmark(n_docs=8, d_model=384, output_path=tmp_path / "compression.json")
@@ -13,8 +13,9 @@ def test_compression_benchmark_reports_actual_and_theoretical_bytes(tmp_path):
     assert result["d_model"] == 384
     assert result["float32_embedding_bytes"] == 8 * 384 * 4
     assert result["stored_lattice_key_bytes"] == 8 * (384 // 8)
-    assert result["theoretical_lattice_payload_bytes"] == 8 * (384 // 8) * 3
-    assert result["theoretical_compression_vs_float32"] == 10.7
+    assert result["stored_key_compression_vs_float32"] == 32.0
+    assert result["hybrid_fallback_payload_bytes"] == 8 * (384 // 8) * 3
+    assert result["hybrid_compression_vs_float32"] == 10.7
     assert result["sqlite_document_count"] == 8
     assert json.loads((tmp_path / "compression.json").read_text())["benchmark"] == "compression"
 
