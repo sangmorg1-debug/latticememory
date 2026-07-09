@@ -351,34 +351,9 @@ class LatticeLLMProxy:
         CSV columns ``question`` and ``answer`` are required; ``intent_id``,
         ``metadata``, and ``ttl_seconds`` are optional.
         """
-        import csv as _csv
-        from pathlib import Path as _Path
+        from latticememory.pq_seed import load_qa_pairs_file
 
-        p = _Path(path)
-        if not p.exists():
-            logger.warning("warm_path %s does not exist — skipping warm-start", path)
-            return 0
-
-        pairs: list[dict] = []
-        suffix = p.suffix.lower()
-        try:
-            if suffix == ".csv":
-                with open(p, encoding="utf-8") as f:
-                    for row in _csv.DictReader(f):
-                        pairs.append(dict(row))
-            elif suffix in (".json", ".jsonl"):
-                text = p.read_text(encoding="utf-8")
-                if suffix == ".jsonl":
-                    pairs = [json.loads(ln) for ln in text.splitlines() if ln.strip()]
-                else:
-                    data = json.loads(text)
-                    pairs = data if isinstance(data, list) else [data]
-            else:
-                logger.warning("warm_path %s: unsupported format %s — skipping", path, suffix)
-                return 0
-        except Exception as exc:
-            logger.warning("warm_path %s: failed to load: %s", path, exc)
-            return 0
+        pairs = load_qa_pairs_file(path)
 
         added = 0
         for row in pairs:
