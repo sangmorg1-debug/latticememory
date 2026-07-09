@@ -35,9 +35,12 @@ admin_key     = os.getenv("LATTICE_ADMIN_KEY", None)
 reviewer_key  = os.getenv("LATTICE_REVIEWER_KEY", None)
 redis_url     = os.getenv("LATTICE_REDIS_URL", None)
 redis_namespace = os.getenv("LATTICE_REDIS_NAMESPACE", "lattice")
+from latticememory.pq_seed import DEFAULT_PQ_CODEBOOK_SIZE, DEFAULT_PQ_NUM_BLOCKS
+
 pq_proof_dataset = os.getenv("LATTICE_PQ_PROOF_DATASET", None)
-pq_num_blocks = int(os.getenv("LATTICE_PQ_NUM_BLOCKS", "4"))
-pq_codebook_size = int(os.getenv("LATTICE_PQ_CODEBOOK_SIZE", "4"))
+pq_mode = os.getenv("LATTICE_PQ_MODE", "false").lower() == "true"
+pq_num_blocks = int(os.getenv("LATTICE_PQ_NUM_BLOCKS", str(DEFAULT_PQ_NUM_BLOCKS)))
+pq_codebook_size = int(os.getenv("LATTICE_PQ_CODEBOOK_SIZE", str(DEFAULT_PQ_CODEBOOK_SIZE)))
 
 import warnings
 
@@ -61,6 +64,14 @@ if pq_proof_dataset:
         raise RuntimeError(f"LATTICE_PQ_PROOF_DATASET is not a file: {dataset_path}")
     from latticememory.proof_pack import build_seeded_pq_cache_from_support_jsonl
 
+    if pq_mode:
+        warnings.warn(
+            "Both --pq-proof-dataset and --pq-mode were given -- "
+            "--pq-proof-dataset takes precedence, --pq-mode is ignored.",
+            RuntimeWarning,
+            stacklevel=1,
+        )
+
     semantic_cache = build_seeded_pq_cache_from_support_jsonl(
         pq_proof_dataset,
         redis_url=redis_url,
@@ -76,6 +87,31 @@ if pq_proof_dataset:
         "codebook_size": pq_codebook_size,
         "seeded_entries": semantic_cache.size,
         "mode": "proof_demo",
+    }
+elif pq_mode:
+    if not warm_path:
+        raise RuntimeError(
+            "--pq-mode requires --warm-path: PQ codebooks are fit from the "
+            "warm-start file's entries, and there's nothing to fit from "
+            "without one."
+        )
+    from latticememory.pq_seed import build_pq_cache_from_qa_file
+
+    semantic_cache = build_pq_cache_from_qa_file(
+        warm_path,
+        encoder_model=encoder_model,
+        pq_num_blocks=pq_num_blocks,
+        pq_codebook_size=pq_codebook_size,
+        sqlite_path=sqlite_path,
+        redis_url=redis_url,
+        redis_namespace=redis_namespace,
+    )
+    pq_proof = {
+        "enabled": True,
+        "num_blocks": pq_num_blocks,
+        "codebook_size": pq_codebook_size,
+        "seeded_entries": semantic_cache.size,
+        "mode": "pq_mode",
     }
 
 
@@ -104,7 +140,7 @@ proxy = LatticeLLMProxy(
     cache_cosine_gate=cache_cosine_gate,
     cache_cosine_threshold=cache_cosine_threshold,
     miss_log_path=miss_log_path,
-    warm_path=warm_path,
+    warm_path=(None if (pq_mode and semantic_cache is not None) else warm_path),
     admin_key=admin_key,
     reviewer_key=reviewer_key,
     redis_url=redis_url,

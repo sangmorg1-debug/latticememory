@@ -538,6 +538,8 @@ def cmd_serve(args: argparse.Namespace) -> int:
         os.environ["LATTICE_REDIS_NAMESPACE"] = args.redis_namespace
     if getattr(args, "pq_proof_dataset", None):
         os.environ["LATTICE_PQ_PROOF_DATASET"] = args.pq_proof_dataset
+    if getattr(args, "pq_mode", False):
+        os.environ["LATTICE_PQ_MODE"] = "true"
     if getattr(args, "pq_num_blocks", None) is not None:
         os.environ["LATTICE_PQ_NUM_BLOCKS"] = str(args.pq_num_blocks)
     if getattr(args, "pq_codebook_size", None) is not None:
@@ -980,12 +982,7 @@ def cmd_ide(args: argparse.Namespace) -> int:
 # Main parser
 # ---------------------------------------------------------------------------
 
-def main() -> int:
-    if len(sys.argv) > 1 and sys.argv[1] == "ide":
-        from latticememory.ide.cli import main as ide_main
-
-        return ide_main(sys.argv[2:])
-
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="lattice",
         description="LatticeMemory CLI — batch cache operations and proxy management",
@@ -1069,8 +1066,9 @@ def main() -> int:
     p_srv.add_argument("--redis-url", default=None, help="Redis URL for shared cache storage, e.g. redis://localhost:6382/0")
     p_srv.add_argument("--redis-namespace", default=None, help="Redis key namespace for shared cache entries")
     p_srv.add_argument("--pq-proof-dataset", default=None, help="Support proof-pack JSONL to fit and seed a PQ-backed cache before serving")
-    p_srv.add_argument("--pq-num-blocks", type=int, default=None, help="PQ num_blocks for --pq-proof-dataset; default 4")
-    p_srv.add_argument("--pq-codebook-size", type=int, default=None, help="PQ codebook_size for --pq-proof-dataset; default 4")
+    p_srv.add_argument("--pq-num-blocks", type=int, default=None, help="PQ num_blocks for --pq-proof-dataset or --pq-mode; default 8")
+    p_srv.add_argument("--pq-codebook-size", type=int, default=None, help="PQ codebook_size for --pq-proof-dataset or --pq-mode; default 256")
+    p_srv.add_argument("--pq-mode", action="store_true", help="Build a PQ-backed cache from --warm-path's Q&A pairs (requires --warm-path). Uses the validated default (8 blocks / 256-entry codebook) unless --pq-num-blocks/--pq-codebook-size override it. Distinct from --pq-proof-dataset, which reproduces the proof-pack's own benchmark schema; --pq-proof-dataset takes precedence if both are given.")
     p_srv.add_argument("--warm-path",    default=None,    help="CSV/JSON/JSONL file to pre-warm cache at startup")
     p_srv.add_argument("--admin-key",    default=None,    help="Secret key required for /v1/cache mutations")
     p_srv.add_argument("--host",         default="0.0.0.0")
@@ -1115,6 +1113,16 @@ def main() -> int:
     p_ded.add_argument("--encoder",   default="dfrokido/bge-large-e8-snap", help="Encoder model")
     p_ded.add_argument("--text-col",  default="text", help="Column/key name for text field (JSON/CSV)")
 
+    return parser
+
+
+def main() -> int:
+    if len(sys.argv) > 1 and sys.argv[1] == "ide":
+        from latticememory.ide.cli import main as ide_main
+
+        return ide_main(sys.argv[2:])
+
+    parser = build_parser()
     args = parser.parse_args()
     dispatch = {
         "populate":  cmd_populate,
