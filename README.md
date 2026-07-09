@@ -49,6 +49,8 @@ Asymmetric QA/RAG (query text structurally different from passage text) remains 
 - **STS quality:** `bge-large-e8-snap` scores 0.8714 vs 0.8637 float baseline (+0.0077).
 
 > **Compression basis:** 1 address byte per 8-dim block × 128 blocks = 128 bytes for 1024-dim vs 4,096 bytes float32 = 32×. This applies to E8 key storage only, for symmetric caching/dedup workloads that never need the dense fallback index. Asymmetric search (RAG/QA) needs that fallback on top of the E8 key, which brings combined compression down to **~10.7×** for that workload — see [`docs/honest_product_review.md`](docs/honest_product_review.md). Both numbers are real; they describe different workloads, not a discrepancy. (An earlier version of this codebase's own `LatticeIndex.stats()` computed key-only compression using the hybrid-workload byte count by mistake, understating it as ~10.7x when the real key-only figure is 32x — fixed; see the comment above `e8_key_bytes` in `LatticeIndex.stats()` for the corrected accounting.)
+>
+> **Separate from the byte-count fix above, added 2026-07-08:** the 32×/10.7× figures describe the size of the *added* E8 key/index structure, not a reduction in what's actually stored. `E8LatticeDB` (`e8_retriever.py`) keeps a full-precision embedding for every document permanently, in `self._embeddings`, used for exact-hit scoring and never discarded — this is unconditional and independent of whether a `DenseVectorFallback` is configured, so it's present even in plain `mode="cache"` with no fallback at all. There is no compaction, pruning, or "drop the original embedding once it's keyed" path anywhere in the codebase. The E8 key is an **additional O(1) hash-bucket lookup layer added on top of** the retained full embedding, not a replacement for it — total memory for a running index is the full float32 store *plus* the key overhead above, which is larger than plain float32 storage, not smaller. What the key buys is lookup **speed** for exact/near-exact hits (`hash_store.get(key, [])`, an O(1) dict-bucket lookup, versus a similarity scan) — not a footprint reduction. Any future public claim about memory savings should say "key structure" or "index," not "footprint" or "total memory," to avoid re-introducing this conflation.
 
 ---
 
@@ -484,7 +486,7 @@ query → Hamming-N neighbor → O(1) HammingRouter lookup
 query → no neighbor found → dense fallback (Int8 or float32 ANN)
 ```
 
-The E8 key is a **deterministic hash of meaning** — not an approximation. Two texts that are semantically identical land on the same key every time, without cosine threshold tuning.
+The E8 key is a **deterministic hash of exact/near-exact text**, not of meaning in general — not an approximation for that narrower case. Two texts that are identical or near-identical land on the same key every time, without cosine threshold tuning. It does not reliably do this for genuine paraphrases (see the real-data numbers in "What it's for" above): a key match is strong evidence of an exact/near-exact repeat, not evidence of semantic equivalence.
 
 ---
 
