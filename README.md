@@ -48,7 +48,7 @@ Asymmetric QA/RAG (query text structurally different from passage text) remains 
 - **Int8 fallback** is the recommended fallback for RAG/QA — 4× smaller than float32, 95% recall parity.
 - **STS quality:** `bge-large-e8-snap` scores 0.8714 vs 0.8637 float baseline (+0.0077).
 
-> **Compression basis:** 1 address byte per 8-dim block × 128 blocks = 128 bytes for 1024-dim vs 4,096 bytes float32 = 32×. This applies to E8 key storage only; hybrid mode also stores the dense index.
+> **Compression basis:** 1 address byte per 8-dim block × 128 blocks = 128 bytes for 1024-dim vs 4,096 bytes float32 = 32×. This applies to E8 key storage only, for symmetric caching/dedup workloads that never need the dense fallback index. Asymmetric search (RAG/QA) needs that fallback on top of the E8 key, which brings combined compression down to **~10.7×** for that workload — see [`docs/honest_product_review.md`](docs/honest_product_review.md). Both numbers are real; they describe different workloads, not a discrepancy. (An earlier version of this codebase's own `LatticeIndex.stats()` computed key-only compression using the hybrid-workload byte count by mistake, understating it as ~10.7x when the real key-only figure is 32x — fixed; see the comment above `e8_key_bytes` in `LatticeIndex.stats()` for the corrected accounting.)
 
 ---
 

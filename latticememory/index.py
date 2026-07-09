@@ -206,7 +206,23 @@ class LatticeIndex:
 
     def stats(self) -> LatticeStats:
         docs = self._runtime.memory.num_documents
-        e8_key_bytes = docs * (self._d_model // 8) * 3
+        # The E8 key is exactly 1 byte per 8-dim block (see
+        # e8_retriever._quantize_to_indices: `bytes(...argmax(dim=-1)...)`,
+        # one byte per block) -- confirmed by benchmarks/benchmark_compression.py's
+        # SQLite-measured stored_lattice_key_bytes. A "3x" multiplier here
+        # previously inflated e8_key_bytes threefold, understating key-only
+        # compression as ~10.7x when the real, measured figure is ~32x.
+        # (Note: 3 bytes/block does NOT decompose as "E8 key + a full Int8
+        # fallback array" -- that would be 128+1024=1152 bytes/doc at
+        # d_model=1024, i.e. ~3.6x, not 10.7x. The precise origin of the
+        # "10.7x hybrid" figure in docs/honest_product_review.md is not
+        # re-derived here; this fix only corrects e8_key_bytes to match the
+        # real, verified E8-key-only storage format.)
+        # Hybrid-mode overhead, when a fallback IS configured, is already
+        # accounted for separately and correctly via the real, measured
+        # fallback_bytes below -- it does not belong folded into
+        # e8_key_bytes itself.
+        e8_key_bytes = docs * (self._d_model // 8)
         fallback_bytes = 0
         fallback_quantization = None
         if self._runtime.memory.fallback is not None:

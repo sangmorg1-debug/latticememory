@@ -105,7 +105,10 @@ def test_stats_doc_count(index):
 def test_stats_compression_ratio_positive(index):
     index.add(["some text"])
     stats = index.stats()
-    assert 10.0 <= stats.compression_vs_float32 <= 11.0
+    # Key-only mode (no fallback configured): real measured ratio is 32x
+    # (4 bytes/dim float32 -> 1 byte per 8-dim E8 block). See
+    # docs/honest_product_review.md's "32x (key-only)" figure.
+    assert 31.0 <= stats.compression_vs_float32 <= 33.0
 
 
 def test_stats_exposes_key_fallback_and_total_bytes():
@@ -115,7 +118,7 @@ def test_stats_exposes_key_fallback_and_total_bytes():
 
     stats = idx.stats()
 
-    assert stats.e8_key_bytes == 2 * (384 // 8) * 3
+    assert stats.e8_key_bytes == 2 * (384 // 8)
     assert stats.fallback_bytes == 2 * 384
     assert stats.total_index_bytes == stats.e8_key_bytes + stats.fallback_bytes
     assert stats.float32_embedding_bytes == 2 * 384 * 4
