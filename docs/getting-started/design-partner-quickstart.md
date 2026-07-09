@@ -145,8 +145,30 @@ all with less data; grow the codebook size as your Q&A file grows.
 
 Save your real file as `qa_pairs.jsonl` in this repo's working directory.
 Redis is behind a Compose profile, so it doesn't start with plain
-`docker compose up` -- start it explicitly first, then run the proxy
-against it:
+`docker compose up` -- start it explicitly first, then confirm it's actually
+running before starting the proxy against it:
+
+```bash
+docker compose --profile with-redis up -d redis
+docker inspect latticememory-redis-1 --format '{{.State.Status}}'
+```
+
+Confirm this prints `running` before proceeding. This step matters because
+starting the proxy while Redis is still coming up (or not running at all)
+fails the proxy's startup-time Redis connection permanently -- it's a
+one-shot check at boot, not a retry loop, so a proxy started against a
+not-yet-ready Redis crashes rather than waiting.
+
+**If `docker compose --profile with-redis up -d redis` itself fails** with
+something like `failed to bind host port ... address already in use`: this
+release's Compose file no longer publishes Redis's port to the host (see
+below), so that specific error shouldn't recur -- but if you've re-added a
+host port mapping of your own, or you hit an analogous port conflict
+elsewhere, it means something else on your machine is already using that
+port. Stop that process or change the port, then retry; a stale failed
+container can also get left behind and silently reused by a naive retry, so
+if the error persists after freeing the port, run
+`docker rm -f latticememory-redis-1` once before retrying.
 
 ```bash
 docker compose --profile with-redis up -d redis
@@ -179,6 +201,24 @@ What each piece is doing, and why it's there:
   Mounting at `/qa_pairs.jsonl` instead avoids the conflict entirely; your
   file still isn't visible inside the container until you mount it
   explicitly, this just picks a path that actually works.
+- **`-v /absolute/path/to/qa_pairs.jsonl:...` -- use an absolute path, not
+  `$(pwd)`.** Depending on your shell and how you're invoking Docker (for
+  example, from inside a nested shell like WSL), `$(pwd)` can resolve to the
+  wrong value or expand incorrectly, silently turning the mount target into
+  an empty directory instead of your file -- the proxy then fails at startup
+  with `Is a directory: '/qa_pairs.jsonl'`. An absolute path sidesteps this
+  entirely.
+- **Redis has no host port published in this release's `docker-compose.yml`
+  (no `ports:` under the `redis` service).** The proxy only ever reaches
+  Redis over the internal `lattice` Docker network via the `redis` DNS
+  alias (`LATTICE_REDIS_URL=redis://redis:6379/0` above) -- it never goes
+  through the host, so publishing the port isn't needed for this flow, and
+  doing so collides with any Redis already running locally on 6379 (a common
+  default for local dev setups, and the actual cause of a
+  `failed to bind host port ... address already in use` error if you add
+  your own `ports:` mapping back). If you want to inspect the cache from the
+  host for debugging, use `docker exec latticememory-redis-1 redis-cli
+  --scan --pattern 'lattice:*'` rather than a host-side Redis client.
 - **`LATTICE_PQ_MODE=true`** fits PQ codebooks (8 blocks, 256 codewords --
   the corrected, validated default as of this release) from the same file
   being seeded, and builds the semantic cache from it directly.

@@ -25,10 +25,13 @@ services:
       start_period: 5s
 
   # Optional: Redis-backed cache for multi-instance deployments
+  # No host port published: the proxy reaches this over the internal
+  # `lattice` Docker network via the `redis` DNS alias, never through the
+  # host. Publishing 6379 to the host isn't needed for that and collides
+  # with any Redis already running locally on the default port. To poke at
+  # the cache from the host, use `docker exec <container> redis-cli ...`.
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
     volumes:
       - redis-data:/data
     networks:
