@@ -116,9 +116,23 @@ pairs, not a labeled four-way split, just what a support team already has:
 {"question": "How do I reset my password?", "answer": "Use the 'Forgot password' link on the sign-in page."}
 ```
 
-Save that as `qa_pairs.jsonl` in this repo's working directory. Redis is
-behind a Compose profile, so it doesn't start with plain `docker-compose up`
--- start it explicitly first, then run the proxy against it:
+**Your file needs at least as many Q&A pairs as `--pq-codebook-size`
+(`LATTICE_PQ_CODEBOOK_SIZE`), which defaults to 256.** PQ codebooks are fit
+by clustering your own rows into that many centroids, and fitting more
+centroids than you have data points is not possible -- `--pq-mode` fails
+fast at startup with a clear error naming your actual count if your file is
+smaller than the codebook size. The two-pair example above is illustrative
+of the *shape* of the file, not something you can run as-is with the
+default codebook size. If you have a few dozen real pairs rather than 256+,
+pass a smaller codebook explicitly, sized to roughly match your data volume
+-- e.g. `--pq-codebook-size 16` (or `-e LATTICE_PQ_CODEBOOK_SIZE=16` for the
+Docker path below). Smaller codebooks trade match quality for working at
+all with less data; grow the codebook size as your Q&A file grows.
+
+Save your real file as `qa_pairs.jsonl` in this repo's working directory.
+Redis is behind a Compose profile, so it doesn't start with plain
+`docker-compose up` -- start it explicitly first, then run the proxy
+against it:
 
 ```bash
 docker-compose --profile with-redis up -d redis

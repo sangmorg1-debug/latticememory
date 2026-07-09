@@ -104,6 +104,14 @@ def build_pq_cache_from_qa_pairs(
     if not prompts:
         raise ValueError("no Q&A pairs to seed a PQ cache from -- got an empty or entirely-unusable list")
 
+    if len(prompts) < pq_codebook_size:
+        raise ValueError(
+            f"build_pq_cache_from_qa_pairs needs at least pq_codebook_size={pq_codebook_size} "
+            f"usable Q&A pairs to fit {pq_codebook_size} centroids, got only "
+            f"{len(prompts)}. Supply more Q&A pairs, or pass a smaller "
+            f"pq_codebook_size (--pq-codebook-size on the CLI) sized to your data."
+        )
+
     runtime_dim = int(d_model or getattr(encoder, "get_embedding_dimension", lambda: 0)() or 0)
     if runtime_dim <= 0:
         probe = encoder.encode(["dimension probe"], batch_size=batch_size)

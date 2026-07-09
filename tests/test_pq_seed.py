@@ -148,3 +148,29 @@ def test_build_pq_cache_from_qa_pairs_empty_list_raises():
     import pytest
     with pytest.raises(ValueError, match="no Q&A pairs"):
         build_pq_cache_from_qa_pairs([], encoder=FakeEncoder(32), d_model=32)
+
+
+def test_build_pq_cache_from_qa_pairs_fewer_pairs_than_codebook_size_raises():
+    """A design partner's small Q&A file must fail fast with a clear error,
+    not an opaque train_spherical_kmeans ValueError -- see the getting-started
+    quickstart's Stage 3, which is exactly this scenario (a design partner
+    supplying a few pairs against a codebook sized for their data).
+    """
+    from latticememory.pq_seed import build_pq_cache_from_qa_pairs
+
+    import pytest
+
+    qa_pairs = [
+        {"question": "What is the refund policy?", "answer": "30 days."},
+        {"question": "How do I reset my password?", "answer": "Use the reset link."},
+        {"question": "Where is my order?", "answer": "Check your email for tracking."},
+    ]
+
+    with pytest.raises(ValueError) as exc_info:
+        build_pq_cache_from_qa_pairs(
+            qa_pairs, encoder=FakeEncoder(32), d_model=32, pq_num_blocks=4, pq_codebook_size=16,
+        )
+
+    message = str(exc_info.value)
+    assert "3" in message  # actual count of usable Q&A pairs
+    assert "16" in message  # required minimum (pq_codebook_size)

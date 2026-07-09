@@ -39,8 +39,14 @@ from latticememory.pq_seed import DEFAULT_PQ_CODEBOOK_SIZE, DEFAULT_PQ_NUM_BLOCK
 
 pq_proof_dataset = os.getenv("LATTICE_PQ_PROOF_DATASET", None)
 pq_mode = os.getenv("LATTICE_PQ_MODE", "false").lower() == "true"
-pq_num_blocks = int(os.getenv("LATTICE_PQ_NUM_BLOCKS", str(DEFAULT_PQ_NUM_BLOCKS)))
-pq_codebook_size = int(os.getenv("LATTICE_PQ_CODEBOOK_SIZE", str(DEFAULT_PQ_CODEBOOK_SIZE)))
+# Left unresolved (None) here on purpose when the user hasn't set them: the
+# two branches below need different defaults when unset --
+# --pq-proof-dataset's own historical 4/4 (build_seeded_pq_cache_from_support_jsonl's
+# defaults in proof_pack.py) vs --pq-mode's validated 8/256
+# (DEFAULT_PQ_NUM_BLOCKS/DEFAULT_PQ_CODEBOOK_SIZE) -- resolving to a single
+# number here would silently retune whichever branch didn't ask for it.
+pq_num_blocks = int(os.environ["LATTICE_PQ_NUM_BLOCKS"]) if os.getenv("LATTICE_PQ_NUM_BLOCKS") else None
+pq_codebook_size = int(os.environ["LATTICE_PQ_CODEBOOK_SIZE"]) if os.getenv("LATTICE_PQ_CODEBOOK_SIZE") else None
 
 import warnings
 
@@ -72,19 +78,29 @@ if pq_proof_dataset:
             stacklevel=1,
         )
 
+    # Only pass pq_num_blocks/pq_codebook_size through when the user actually
+    # set them -- otherwise let build_seeded_pq_cache_from_support_jsonl's
+    # own historical 4/4 defaults apply, so --pq-proof-dataset stays
+    # reproducible regardless of what --pq-mode's default is.
+    proof_pq_kwargs = {}
+    if pq_num_blocks is not None:
+        proof_pq_kwargs["pq_num_blocks"] = pq_num_blocks
+    if pq_codebook_size is not None:
+        proof_pq_kwargs["pq_codebook_size"] = pq_codebook_size
+
     semantic_cache = build_seeded_pq_cache_from_support_jsonl(
         pq_proof_dataset,
         redis_url=redis_url,
         redis_namespace=redis_namespace,
-        pq_num_blocks=pq_num_blocks,
-        pq_codebook_size=pq_codebook_size,
         flush_redis=True,
+        **proof_pq_kwargs,
     )
+    lattice = semantic_cache.runtime.memory.lattice
     pq_proof = {
         "enabled": True,
         "dataset_path": str(dataset_path),
-        "num_blocks": pq_num_blocks,
-        "codebook_size": pq_codebook_size,
+        "num_blocks": lattice.num_blocks,
+        "codebook_size": lattice.codebook_size,
         "seeded_entries": semantic_cache.size,
         "mode": "proof_demo",
     }
@@ -97,19 +113,26 @@ elif pq_mode:
         )
     from latticememory.pq_seed import build_pq_cache_from_qa_file
 
+    # --pq-mode always resolves to the validated 8/256 default when the user
+    # hasn't set LATTICE_PQ_NUM_BLOCKS/LATTICE_PQ_CODEBOOK_SIZE -- unlike
+    # --pq-proof-dataset above, this branch is exactly what the corrected
+    # default exists for.
+    resolved_pq_num_blocks = pq_num_blocks if pq_num_blocks is not None else DEFAULT_PQ_NUM_BLOCKS
+    resolved_pq_codebook_size = pq_codebook_size if pq_codebook_size is not None else DEFAULT_PQ_CODEBOOK_SIZE
+
     semantic_cache = build_pq_cache_from_qa_file(
         warm_path,
         encoder_model=encoder_model,
-        pq_num_blocks=pq_num_blocks,
-        pq_codebook_size=pq_codebook_size,
+        pq_num_blocks=resolved_pq_num_blocks,
+        pq_codebook_size=resolved_pq_codebook_size,
         sqlite_path=sqlite_path,
         redis_url=redis_url,
         redis_namespace=redis_namespace,
     )
     pq_proof = {
         "enabled": True,
-        "num_blocks": pq_num_blocks,
-        "codebook_size": pq_codebook_size,
+        "num_blocks": resolved_pq_num_blocks,
+        "codebook_size": resolved_pq_codebook_size,
         "seeded_entries": semantic_cache.size,
         "mode": "pq_mode",
     }
