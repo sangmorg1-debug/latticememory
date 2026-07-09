@@ -34,7 +34,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install Python deps first (layer-cache friendly)
 COPY pyproject.toml .
 COPY latticememory/ /app/latticememory/
-RUN pip install --no-cache-dir -e ".[proxy]"
+RUN pip install --no-cache-dir -e ".[proxy,redis]"
 
 # Health check using the built-in /health endpoint
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \

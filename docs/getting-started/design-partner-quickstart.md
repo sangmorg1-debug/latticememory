@@ -11,15 +11,29 @@ it -- not assumed to transfer to a different configuration.
 
 These commands were checked against this release's actual
 `latticememory/cli.py`, `latticememory/proxy_server.py`, `Dockerfile`, and
-`docker-compose.yml`, flag by flag and env-var by env-var. If something
+`docker-compose.yml`, flag by flag and env-var by env-var -- and, as of this
+revision, actually run end to end (real model, real Docker build, real
+Redis) in a Linux environment where they can execute, not just read against
+the source. That pass caught three real bugs a code-only read had missed
+(a Docker Compose CLI syntax mismatch, a file-mount path conflict, and a
+missing dependency in the Docker image) -- all fixed below. If something
 doesn't behave as described, check `/v1/analytics` on your running proxy
 first -- it reports your real hit rate and false-positive rate, which is
 more useful than any number in this doc.
 
+Commands below use `docker compose` (the Compose V2 plugin syntax,
+space-separated) rather than the older standalone `docker-compose` binary
+(hyphenated). Modern Docker installs (Docker Desktop, and most current
+Linux package installs) ship the plugin form by default, and the standalone
+binary may not be present at all -- if your `docker compose` invocation
+fails with "unknown command," you likely have only the legacy binary
+installed; substitute `docker-compose` for `docker compose` throughout, the
+flags are identical either way.
+
 ## Stage 1: Start the proxy (zero config)
 
 ```bash
-OPENAI_API_KEY=sk-... docker-compose up
+OPENAI_API_KEY=sk-... docker compose up
 ```
 
 Point your OpenAI client at `http://localhost:8000` instead of
@@ -80,22 +94,22 @@ recommended threshold.
 Apply that threshold to the Docker proxy through environment variables, not
 CLI flags. The Docker image's `ENTRYPOINT` always runs the ASGI server
 directly (`uvicorn latticememory.proxy_server:app ...`); passing
-`lattice serve --hamming-mode ...` as extra arguments to `docker-compose run`
+`lattice serve --hamming-mode ...` as extra arguments to `docker compose run`
 does **not** work the way it might look -- those arguments get appended
 after the fixed entrypoint's own arguments rather than replacing it with a
 new command, so `lattice` is never actually invoked inside the container.
 Configuration for the Docker path is env-var only:
 
 ```bash
-docker-compose run --rm --service-ports \
+docker compose run --rm --service-ports \
   -e LATTICE_HAMMING_MODE=serve \
   -e LATTICE_HAMMING_COSINE_GATE=true \
   -e LATTICE_HAMMING_COSINE_THRESHOLD=<the threshold lattice calibrate printed> \
   latticememory-proxy
 ```
 
-`--service-ports` is required here: unlike `docker-compose up`,
-`docker-compose run` does not publish the service's `ports:` mapping by
+`--service-ports` is required here: unlike `docker compose up`,
+`docker compose run` does not publish the service's `ports:` mapping by
 default -- without it your OpenAI client can't reach `localhost:8000`.
 
 (If you're running the proxy directly with `pip install
@@ -131,17 +145,17 @@ all with less data; grow the codebook size as your Q&A file grows.
 
 Save your real file as `qa_pairs.jsonl` in this repo's working directory.
 Redis is behind a Compose profile, so it doesn't start with plain
-`docker-compose up` -- start it explicitly first, then run the proxy
+`docker compose up` -- start it explicitly first, then run the proxy
 against it:
 
 ```bash
-docker-compose --profile with-redis up -d redis
+docker compose --profile with-redis up -d redis
 ```
 
 ```bash
-docker-compose run --rm --service-ports \
-  -v "$(pwd)/qa_pairs.jsonl:/data/qa_pairs.jsonl" \
-  -e LATTICE_WARM_PATH=/data/qa_pairs.jsonl \
+docker compose run --rm --service-ports \
+  -v "$(pwd)/qa_pairs.jsonl:/qa_pairs.jsonl:ro" \
+  -e LATTICE_WARM_PATH=/qa_pairs.jsonl \
   -e LATTICE_PQ_MODE=true \
   -e LATTICE_CACHE_COSINE_GATE=true \
   -e LATTICE_REDIS_URL=redis://redis:6379/0 \
@@ -150,16 +164,21 @@ docker-compose run --rm --service-ports \
 
 What each piece is doing, and why it's there:
 
-- **`docker-compose --profile with-redis up -d redis` is a separate step**
+- **`docker compose --profile with-redis up -d redis` is a separate step**
   because `latticememory-proxy` has no `depends_on: redis` in
-  `docker-compose.yml`. Running `docker-compose run latticememory-proxy`
+  `docker-compose.yml`. Running `docker compose run latticememory-proxy`
   alone -- even with `--profile with-redis` tacked onto that same command --
   will not start Redis for you; `run` only starts the target service and its
   declared dependencies, and this service declares none.
-- **The `-v ".../qa_pairs.jsonl:/data/qa_pairs.jsonl"` mount is required**
-  because `/data` inside the container is a Docker-managed named volume
-  (`lattice-data`), not a bind mount of your working directory -- your file
-  is not visible inside the container until you mount it explicitly.
+- **The `-v ".../qa_pairs.jsonl:/qa_pairs.jsonl"` mount lands at the
+  container root, not under `/data`.** `/data` is already a Docker-managed
+  named volume (`lattice-data:/data` in `docker-compose.yml`) -- bind-mounting
+  a single file at a path *inside* an existing named-volume mount point
+  conflicts with it (confirmed directly: Docker's own daemon refuses with
+  `not a directory: Are you trying to mount a directory onto a file?`).
+  Mounting at `/qa_pairs.jsonl` instead avoids the conflict entirely; your
+  file still isn't visible inside the container until you mount it
+  explicitly, this just picks a path that actually works.
 - **`LATTICE_PQ_MODE=true`** fits PQ codebooks (8 blocks, 256 codewords --
   the corrected, validated default as of this release) from the same file
   being seeded, and builds the semantic cache from it directly.
